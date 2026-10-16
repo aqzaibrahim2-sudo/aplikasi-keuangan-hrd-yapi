@@ -14,11 +14,11 @@ export default async function handler(req, res) {
     const SUPABASE_URL = process.env.SUPABASE_URL;
     const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
     const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-    const OCR_API_KEY = process.env.OCR_API_KEY;
+    const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
     const groupName = message.chat.title || `Grup ${message.chat.id}`;
     
-    // Ambil resolusi foto tertinggi
+    // Ambil foto dengan resolusi tertinggi
     const photo = message.photo[message.photo.length - 1];
     const fileId = photo.file_id;
 
@@ -54,60 +54,68 @@ export default async function handler(req, res) {
 
     const imageUrl = `${SUPABASE_URL}/storage/v1/object/public/receipts/${fileName}`;
 
-    // 4. Panggil API OCR.space
-    const formData = new URLSearchParams();
-    formData.append('apikey', OCR_API_KEY);
-    formData.append('url', imageUrl);
-    formData.append('language', 'eng');
-    formData.append('isOverlayRequired', 'false');
-    formData.append('OCREngine', '2');
+    // 4. Analisis Gambar Menggunakan Google Gemini Vision API
+    const base64Image = Buffer.from(imgBuffer).toString('base64');
+    
+    const promptText = `Analisis foto nota/struk belanja ini (baik cetak maupun tulisan tangan manual).
+Ekstrak dua data berikut dan kembalikan HANYA format JSON tanpa teks lain atau markdown codeblock:
+{
+  "description": "Nama toko/cabang/penjual atau ringkasan singkat barang belanjaan",
+  "amount": 180000,
+  "raw_text": "Tuliskan seluruh teks yang berhasil kamu baca dari nota ini"
+}
 
-    const ocrRes = await fetch('https://api.ocr.space/parse/image', {
+Catatan:
+- "amount" HARUS berupa angka murni (integer) tanpa titik/koma, mewakili Total Harga / Total Pembayaran akhir.
+- Jika "description" tidak ditemukan nama toko, buat keterangan ringkas dari nota tersebut.`;
+
+    const geminiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: formData.toString()
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [
+          {
+            parts: [
+              { text: promptText },
+              {
+                inline_data: {
+                  mime_type: 'image/jpeg',
+                  data: base64Image
+                }
+              }
+            ]
+          }
+        ]
+      })
     });
 
-    const ocrData = await ocrRes.json();
-    let rawText = '';
-    if (ocrData && ocrData.ParsedResults && ocrData.ParsedResults.length > 0) {
-      rawText = ocrData.ParsedResults[0].ParsedText || '';
-    }
-
-    // --- EKSTRAKSI CERDAS & AMAN DARI TEKS OCR ---
+    const geminiData = await geminiRes.json();
+    
     let description = 'Nota Belanja Telegram';
     let amount = 0;
+    let rawText = '';
 
-    if (rawText) {
-      // 1. Ambil Keterangan Toko
-      const hniMatch = rawText.match(/(BC\s*HNI[^\n]+)/i);
-      if (hniMatch) {
-        description = hniMatch[1].trim();
-      }
-
-      // 2. Ekstraksi Nominal Total Harga secara Presisi
-      // Cari semua angka yang formatnya ribuan atau lebih (misal: 180.000 atau 180000)
-      // Kita bersihkan dulu titik/komma pemisah ribuan
-      const cleanText = rawText.replace(/\./g, '');
-      const allNumbers = cleanText.match(/\b\d{4,}\b/g); // Cari angka dengan 4 digit atau lebih
+    if (geminiData.candidates && geminiData.candidates[0]?.content?.parts[0]?.text) {
+      const responseText = geminiData.candidates[0].content.parts[0].text.trim();
+      // Bersihkan pemformatan markdown jika Gemini mengembalikannya dalam triple backticks
+      const cleanJson = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
       
-      if (allNumbers && allNumbers.length > 0) {
-        // Ubah semua angka yang ditemukan menjadi integer
-        const parsedNums = allNumbers.map(n => parseInt(n, 10));
-        
-        // Biasanya "Total Harga" adalah angka terbesar di dalam nota belanja, 
-        // atau kita bisa ambil angka terbesar yang wajar sebagai total belanja.
-        // Untuk nota ini, 180000 adalah angka terbesar.
-        amount = Math.max(...parsedNums);
+      try {
+        const parsed = JSON.parse(cleanJson);
+        description = parsed.description || description;
+        amount = parseInt(parsed.amount, 10) || 0;
+        rawText = parsed.raw_text || responseText;
+      } catch (e) {
+        console.error('JSON Parse Error dari Gemini:', e);
+        rawText = responseText;
       }
     }
-    // ---------------------------------------------
 
     const now = new Date();
     const currentDate = now.toISOString().split('T')[0];
     const currentTime = now.toTimeString().split(' ')[0].substring(0, 5);
 
-    // 5. Simpan Data ke Database Supabase
+    // 5. Simpan Hasil Analisis AI ke Database Supabase
     const dbRes = await fetch(`${SUPABASE_URL}/rest/v1/receipts`, {
       method: 'POST',
       headers: {
@@ -132,7 +140,7 @@ export default async function handler(req, res) {
       throw new Error(`Simpan DB Supabase Gagal: ${dbErr}`);
     }
 
-    return res.status(200).json({ success: true, message: 'Berhasil diproses!' });
+    return res.status(200).json({ success: true, message: 'Berhasil diproses oleh Gemini AI!' });
   } catch (error) {
     console.error('Webhook Error:', error);
     return res.status(200).json({ error: error.message });

@@ -1,107 +1,119 @@
-import { createClient } from '@supabase/supabase-js';
-
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
-const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-const OCR_API_KEY = process.env.OCR_API_KEY;
-
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
 export default async function handler(req, res) {
+  // Telegram akan melakukan check ping / POST
   if (req.method !== 'POST') {
-    return res.status(200).json({ status: 'Webhook is active!' });
+    return res.status(200).json({ status: 'Webhook active and ready!' });
   }
 
   try {
     const update = req.body;
     const message = update.message || update.edited_message;
 
+    // Jika bukan pesan atau tidak ada foto, cukup balas HTTP 200 OK agar Telegram senang
     if (!message || !message.photo) {
-      return res.status(200).json({ message: 'Bukan pesan foto, diabaikan.' });
+      return res.status(200).json({ message: 'Bukan foto, diabaikan.' });
     }
 
-    const chatId = message.chat.id.toString();
-    const groupName = message.chat.title || `Grup ${chatId}`;
-    
-    // Ambil foto dengan resolusi tertinggi
-    const photos = message.photo;
-    const bestPhoto = photos[photos.length - 1];
-    const fileId = bestPhoto.file_id;
+    const SUPABASE_URL = process.env.SUPABASE_URL;
+    const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
+    const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+    const OCR_API_KEY = process.env.OCR_API_KEY;
 
-    // 1. Ambil URL file dari Telegram API
-    const fileRes = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getFile?file_id=${fileId}`);
-    const fileData = await fileRes.json();
-    if (!fileData.ok) throw new Error('Gagal mengambil file dari Telegram');
+    const groupName = message.chat.title || `Grup ${message.chat.id}`;
     
-    const filePath = fileData.result.file_path;
-    const telegramFileUrl = `https://api.telegram.org/file/bot${TELEGRAM_BOT_TOKEN}/${filePath}`;
+    // Ambil resolusi foto tertinggi
+    const photo = message.photo[message.photo.length - 1];
+    const fileId = photo.file_id;
 
-    // 2. Unduh gambar untuk diunggah ke Supabase Storage
-    const imageRes = await fetch(telegramFileUrl);
-    const imageBuffer = await imageRes.arrayBuffer();
+    // 1. Ambil File Path dari Telegram
+    const tgFileRes = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getFile?file_id=${fileId}`);
+    const tgFileData = await tgFileRes.json();
+    
+    if (!tgFileData.ok) {
+      throw new Error('Gagal mengambil file info dari Telegram');
+    }
+
+    const filePath = tgFileData.result.file_path;
+    const telegramImageUrl = `https://api.telegram.org/file/bot${TELEGRAM_BOT_TOKEN}/${filePath}`;
+
+    // 2. Unduh Gambar
+    const imgFetch = await fetch(telegramImageUrl);
+    const imgBuffer = await imgFetch.arrayBuffer();
+
+    // 3. Upload Gambar ke Supabase Storage via REST API Direct
     const fileName = `receipt_${Date.now()}.jpg`;
-
-    const { error: uploadError } = await supabase.storage
-      .from('receipts')
-      .upload(fileName, imageBuffer, { contentType: 'image/jpeg' });
-
-    if (uploadError) throw new Error('Gagal upload ke Supabase Storage: ' + uploadError.message);
-
-    // Ambil Public URL gambar dari Supabase
-    const { data: publicUrlData } = supabase.storage
-      .from('receipts')
-      .getPublicUrl(fileName);
-    
-    const imageUrl = publicUrlData.publicUrl;
-
-    // 3. Proses OCR menggunakan OCR.space API
-    const ocrFormData = new URLSearchParams();
-    ocrFormData.append('apikey', OCR_API_KEY);
-    ocrFormData.append('url', telegramFileUrl);
-    ocrFormData.append('language', 'ind');
-    ocrFormData.append('isOverlayRequired', 'false');
-    ocrFormData.append('scale', 'true');
-    ocrFormData.append('OCREngine', '2');
-
-    const ocrRes = await fetch('https://api.parse.com/api/v1/parse/image', { // Alternatif endpoint atau URL resmi ocr.space
+    const uploadRes = await fetch(`${SUPABASE_URL}/storage/v1/object/receipts/${fileName}`, {
       method: 'POST',
-      body: ocrFormData
+      headers: {
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        'apikey': SUPABASE_ANON_KEY,
+        'Content-Type': 'image/jpeg'
+      },
+      body: imgBuffer
     });
-    
-    // Gunakan fetch langsung ke API resmi ocr.space
-    const ocrResponse = await fetch('https://api.ocr.space/parse/image', {
-      method: 'POST',
-      body: ocrFormData
-    });
-    const ocrResult = await ocrResponse.json();
-    
-    let rawText = '';
-    if (ocrResult && ocrResult.ParsedResults && ocrResult.ParsedResults.length > 0) {
-      rawText = ocrResult.ParsedResults[0].ParsedText;
+
+    if (!uploadRes.ok) {
+      const errText = await uploadRes.text();
+      throw new Error(`Upload Supabase Storage Gagal: ${errText}`);
     }
 
-    // Ekstraksi sederhana (Bisa disesuaikan nanti)
-    const currentDate = new Date().toISOString().split('T')[0];
-    const currentTime = new Date().toTimeString().split(' ')[0].substring(0, 5);
+    const imageUrl = `${SUPABASE_URL}/storage/v1/object/public/receipts/${fileName}`;
 
-    // 4. Simpan ke Database Tabel receipts
-    const { error: dbError } = await supabase.from('receipts').insert([
-      {
+    // 4. Panggil API OCR.space
+    const formData = new URLSearchParams();
+    formData.append('apikey', OCR_API_KEY);
+    formData.append('url', imageUrl);
+    formData.append('language', 'eng');
+    formData.append('isOverlayRequired', 'false');
+    formData.append('OCREngine', '2');
+
+    const ocrRes = await fetch('https://api.ocr.space/parse/image', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      body: formData.toString()
+    });
+
+    const ocrData = await ocrRes.json();
+    let rawText = '';
+    if (ocrData && ocrData.ParsedResults && ocrData.ParsedResults.length > 0) {
+      rawText = ocrData.ParsedResults[0].ParsedText || '';
+    }
+
+    // Tanggal dan jam saat ini
+    const now = new Date();
+    const currentDate = now.toISOString().split('T')[0];
+    const currentTime = now.toTimeString().split(' ')[0].substring(0, 5);
+
+    // 5. Simpan Data Transaksi ke Database Supabase via REST API
+    const dbRes = await fetch(`${SUPABASE_URL}/rest/v1/receipts`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        'apikey': SUPABASE_ANON_KEY,
+        'Content-Type': 'application/json',
+        'Prefer': 'return=minimal'
+      },
+      body: JSON.stringify({
         group_id: groupName,
         image_url: imageUrl,
         transaction_date: currentDate,
         transaction_time: currentTime,
-        description: 'Nota Belanja Otomatis',
-        amount: 0, // Placeholder nominal awal
+        description: 'Nota Belanja Telegram',
+        amount: 0,
         raw_text: rawText
-      }
-    ]);
+      })
+    });
 
-    if (dbError) throw new Error('Gagal simpan ke Database: ' + dbError.message);
+    if (!dbRes.ok) {
+      const dbErr = await dbRes.text();
+      throw new Error(`Simpan DB Supabase Gagal: ${dbErr}`);
+    }
 
-    return res.status(200).json({ success: true, message: 'Nota berhasil diproses!' });
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ error: err.message });
+    return res.status(200).json({ success: true, message: 'Berhasil diproses!' });
+  } catch (error) {
+    console.error('Webhook Error:', error);
+    // Selalu kembalikan 200 agar Telegram tidak melakukan retry bertubi-tubi saat ada kesalahan
+    return res.status(200).json({ error: error.message });
   }
 }

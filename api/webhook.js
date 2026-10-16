@@ -54,7 +54,7 @@ export default async function handler(req, res) {
 
     const imageUrl = `${SUPABASE_URL}/storage/v1/object/public/receipts/${fileName}`;
 
-    // 4. Analisis Gambar Menggunakan DeepSeek Vision API
+    // 4. Analisis Gambar Menggunakan DeepSeek Vision API (Ekstrak Tanggal & Waktu Nota)
     const base64Image = Buffer.from(imgBuffer).toString('base64');
     
     const promptText = `Analisis foto nota/struk belanja ini (baik cetak maupun tulisan tangan manual).
@@ -62,11 +62,15 @@ Ekstrak data berikut dan kembalikan HANYA format JSON tanpa markdown / codeblock
 {
   "description": "Nama toko/cabang/penjual atau ringkasan singkat belanjaan",
   "amount": 180000,
+  "transaction_date": "YYYY-MM-DD",
+  "transaction_time": "HH:MM",
   "raw_text": "Tuliskan seluruh teks yang berhasil terbaca dari nota ini"
 }
 
 Catatan Penting:
 - "amount" HARUS berupa angka murni (integer) tanpa titik/koma, mewakili Total Harga / Total Pembayaran akhir.
+- "transaction_date": Ambil tanggal dari nota dan ubah ke format YYYY-MM-DD (contoh: 2026-08-27). Jika tidak ada di nota, gunakan tanggal hari ini.
+- "transaction_time": Ambil jam dari nota dalam format 24 jam HH:MM (contoh: 09:10). Jika tidak ada di nota, gunakan jam saat ini.
 - Jika "description" tidak ada nama toko, buatkan ringkasan singkat isi nota.`;
 
     const deepseekRes = await fetch('https://api.deepseek.com/chat/completions', {
@@ -99,6 +103,11 @@ Catatan Penting:
     let description = 'Nota Belanja Telegram';
     let amount = 0;
     let rawText = '';
+    
+    // Default fallback ke waktu sekarang jika gagal dibaca AI
+    const now = new Date();
+    let transactionDate = now.toISOString().split('T')[0];
+    let transactionTime = now.toTimeString().split(' ')[0].substring(0, 5);
 
     if (deepseekData.choices && deepseekData.choices[0]?.message?.content) {
       const responseText = deepseekData.choices[0].message.content.trim();
@@ -110,6 +119,8 @@ Catatan Penting:
         const parsed = JSON.parse(cleanJson);
         if (parsed.description) description = parsed.description;
         if (parsed.amount) amount = parseInt(parsed.amount, 10) || 0;
+        if (parsed.transaction_date) transactionDate = parsed.transaction_date;
+        if (parsed.transaction_time) transactionTime = parsed.transaction_time;
         if (parsed.raw_text) rawText = parsed.raw_text;
       } catch (e) {
         console.error('Gagal parse JSON dari DeepSeek:', e);
@@ -117,10 +128,6 @@ Catatan Penting:
     } else {
       rawText = JSON.stringify(deepseekData);
     }
-
-    const now = new Date();
-    const currentDate = now.toISOString().split('T')[0];
-    const currentTime = now.toTimeString().split(' ')[0].substring(0, 5);
 
     // 5. Simpan Hasil ke Database Supabase
     const dbRes = await fetch(`${SUPABASE_URL}/rest/v1/receipts`, {
@@ -134,8 +141,8 @@ Catatan Penting:
       body: JSON.stringify({
         group_id: groupName,
         image_url: imageUrl,
-        transaction_date: currentDate,
-        transaction_time: currentTime,
+        transaction_date: transactionDate,
+        transaction_time: transactionTime,
         description: description,
         amount: amount,
         raw_text: rawText

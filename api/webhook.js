@@ -54,7 +54,7 @@ export default async function handler(req, res) {
 
     const imageUrl = `${SUPABASE_URL}/storage/v1/object/public/receipts/${fileName}`;
 
-    // 4. Analisis Gambar Menggunakan Google Gemini Vision API
+    // 4. Analisis Gambar Menggunakan Google Gemini Vision API (gemini-3.8-flash)
     const base64Image = Buffer.from(imgBuffer).toString('base64');
     
     const promptText = `Analisis foto nota/struk belanja ini (baik nota cetak maupun tulisan tangan manual).
@@ -69,8 +69,8 @@ Catatan Penting:
 - "amount" HARUS berupa angka murni (integer) tanpa titik/koma, mewakili Total Harga / Total Pembayaran akhir.
 - Jika "description" tidak ada nama toko, buatkan ringkasan singkat isi nota.`;
 
-    // Menggunakan endpoint model flash terbaru
-    const geminiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
+    // Menggunakan model gemini-3.8-flash terbaru sesuai instruksi sistem
+    const geminiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${GEMINI_API_KEY}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -100,7 +100,6 @@ Catatan Penting:
       const responseText = geminiData.candidates[0].content.parts[0].text.trim();
       rawText = responseText;
 
-      // Clean markdown code blocks jika AI mengembalikan dalam ```json ... ```
       const cleanJson = responseText.replace(/```json/gi, '').replace(/```/g, '').trim();
       
       try {
@@ -112,7 +111,6 @@ Catatan Penting:
         console.error('Gagal parse JSON Gemini, menyimpan raw text:', e);
       }
     } else {
-      // Jika respons dari Gemini bukan format standar / error
       rawText = JSON.stringify(geminiData);
     }
 

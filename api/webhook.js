@@ -57,17 +57,14 @@ export default async function handler(req, res) {
     // 4. Analisis Gambar Menggunakan Google Gemini Vision API
     const base64Image = Buffer.from(imgBuffer).toString('base64');
     
-    const promptText = `Analisis foto nota/struk belanja ini (baik cetak maupun tulisan tangan manual).
-Ekstrak dua data berikut dan kembalikan HANYA format JSON tanpa teks lain atau markdown codeblock:
+    const promptText = `Analisis foto nota/struk belanja ini. 
+Berikan jawaban dalam format JSON mentah tanpa markdown (tanpa \`\`\`json) dengan struktur persis seperti ini:
 {
-  "description": "Nama toko/cabang/penjual atau ringkasan singkat barang belanjaan",
+  "description": "Nama toko atau keterangan singkat",
   "amount": 180000,
-  "raw_text": "Tuliskan seluruh teks yang berhasil kamu baca dari nota ini"
+  "raw_text": "Tuliskan seluruh teks yang terbaca dari nota ini"
 }
-
-Catatan:
-- "amount" HARUS berupa angka murni (integer) tanpa titik/koma, mewakili Total Harga / Total Pembayaran akhir.
-- Jika "description" tidak ditemukan nama toko, buat keterangan ringkas dari nota tersebut.`;
+Pastikan "amount" adalah angka murni (integer) total harga akhir.`;
 
     const geminiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
       method: 'POST',
@@ -97,25 +94,29 @@ Catatan:
 
     if (geminiData.candidates && geminiData.candidates[0]?.content?.parts[0]?.text) {
       const responseText = geminiData.candidates[0].content.parts[0].text.trim();
-      // Bersihkan pemformatan markdown jika Gemini mengembalikannya dalam triple backticks
+      rawText = responseText; // Simpan teks mentah dari respons AI
+
+      // Coba bersihkan format markdown jika Gemini tetap memunculkannya
       const cleanJson = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
       
       try {
         const parsed = JSON.parse(cleanJson);
-        description = parsed.description || description;
-        amount = parseInt(parsed.amount, 10) || 0;
-        rawText = parsed.raw_text || responseText;
+        if (parsed.description) description = parsed.description;
+        if (parsed.amount) amount = parseInt(parsed.amount, 10) || 0;
+        if (parsed.raw_text) rawText = parsed.raw_text;
       } catch (e) {
-        console.error('JSON Parse Error dari Gemini:', e);
-        rawText = responseText;
+        // Jika gagal parsing JSON, kita coba ekstrak manual dari teks respons
+        console.error('Gagal parse JSON Gemini, menggunakan fallback teks.');
       }
+    } else {
+      rawText = JSON.stringify(geminiData); // Debug jika struktur respons berbeda
     }
 
     const now = new Date();
     const currentDate = now.toISOString().split('T')[0];
     const currentTime = now.toTimeString().split(' ')[0].substring(0, 5);
 
-    // 5. Simpan Hasil Analisis AI ke Database Supabase
+    // 5. Simpan Hasil ke Database Supabase
     const dbRes = await fetch(`${SUPABASE_URL}/rest/v1/receipts`, {
       method: 'POST',
       headers: {

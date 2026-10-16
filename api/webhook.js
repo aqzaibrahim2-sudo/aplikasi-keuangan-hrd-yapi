@@ -14,7 +14,7 @@ export default async function handler(req, res) {
     const SUPABASE_URL = process.env.SUPABASE_URL;
     const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
     const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-    const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+    const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY;
 
     const groupName = message.chat.title || `Grup ${message.chat.id}`;
     
@@ -54,10 +54,10 @@ export default async function handler(req, res) {
 
     const imageUrl = `${SUPABASE_URL}/storage/v1/object/public/receipts/${fileName}`;
 
-    // 4. Analisis Gambar Menggunakan Google Gemini Vision API (gemini-3.8-flash)
+    // 4. Analisis Gambar Menggunakan DeepSeek Vision API
     const base64Image = Buffer.from(imgBuffer).toString('base64');
     
-    const promptText = `Analisis foto nota/struk belanja ini (baik nota cetak maupun tulisan tangan manual).
+    const promptText = `Analisis foto nota/struk belanja ini (baik cetak maupun tulisan tangan manual).
 Ekstrak data berikut dan kembalikan HANYA format JSON tanpa markdown / codeblock:
 {
   "description": "Nama toko/cabang/penjual atau ringkasan singkat belanjaan",
@@ -69,19 +69,23 @@ Catatan Penting:
 - "amount" HARUS berupa angka murni (integer) tanpa titik/koma, mewakili Total Harga / Total Pembayaran akhir.
 - Jika "description" tidak ada nama toko, buatkan ringkasan singkat isi nota.`;
 
-    // Menggunakan model gemini-3.8-flash terbaru sesuai instruksi sistem
-    const geminiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${GEMINI_API_KEY}`, {
+    const deepseekRes = await fetch('https://api.deepseek.com/chat/completions', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${DEEPSEEK_API_KEY}`
+      },
       body: JSON.stringify({
-        contents: [
+        model: 'deepseek-chat',
+        messages: [
           {
-            parts: [
-              { text: promptText },
+            role: 'user',
+            content: [
+              { type: 'text', text: promptText },
               {
-                inline_data: {
-                  mime_type: 'image/jpeg',
-                  data: base64Image
+                type: 'image_url',
+                image_url: {
+                  url: `data:image/jpeg;base64,${base64Image}`
                 }
               }
             ]
@@ -90,14 +94,14 @@ Catatan Penting:
       })
     });
 
-    const geminiData = await geminiRes.json();
+    const deepseekData = await deepseekRes.json();
     
     let description = 'Nota Belanja Telegram';
     let amount = 0;
     let rawText = '';
 
-    if (geminiData.candidates && geminiData.candidates[0]?.content?.parts[0]?.text) {
-      const responseText = geminiData.candidates[0].content.parts[0].text.trim();
+    if (deepseekData.choices && deepseekData.choices[0]?.message?.content) {
+      const responseText = deepseekData.choices[0].message.content.trim();
       rawText = responseText;
 
       const cleanJson = responseText.replace(/```json/gi, '').replace(/```/g, '').trim();
@@ -108,10 +112,10 @@ Catatan Penting:
         if (parsed.amount) amount = parseInt(parsed.amount, 10) || 0;
         if (parsed.raw_text) rawText = parsed.raw_text;
       } catch (e) {
-        console.error('Gagal parse JSON Gemini, menyimpan raw text:', e);
+        console.error('Gagal parse JSON dari DeepSeek:', e);
       }
     } else {
-      rawText = JSON.stringify(geminiData);
+      rawText = JSON.stringify(deepseekData);
     }
 
     const now = new Date();
@@ -143,7 +147,7 @@ Catatan Penting:
       throw new Error(`Simpan DB Supabase Gagal: ${dbErr}`);
     }
 
-    return res.status(200).json({ success: true, message: 'Berhasil diproses oleh Gemini AI!' });
+    return res.status(200).json({ success: true, message: 'Berhasil diproses oleh DeepSeek Vision!' });
   } catch (error) {
     console.error('Webhook Error:', error);
     return res.status(200).json({ error: error.message });

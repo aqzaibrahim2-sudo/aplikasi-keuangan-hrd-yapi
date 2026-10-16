@@ -85,12 +85,28 @@ export default async function handler(req, res) {
         description = hniMatch[1].trim();
       }
 
-      // Cari Total Harga (contoh: Total Harga : 180.000)
+      // Cari Total Harga secara presisi (mencari kata 'Total Harga' lalu mengambil angka nominal setelahnya)
+      // Menggunakan regex yang menghindari 'Total Item' atau 'Total PV'
       const totalMatch = rawText.match(/Total\s*Harga\s*[:\s]*([\d\.,]+)/i);
       if (totalMatch) {
-        // Ubah format string angka "180.000" menjadi integer 180000
         const cleanNum = totalMatch[1].replace(/\./g, '').replace(/,/g, '');
         amount = parseInt(cleanNum, 10) || 0;
+      }
+      
+      // Fallback cadangan jika format teks OCR-nya agak terpisah spasi/baris
+      if (amount === 0 || amount < 1000) {
+        const lines = rawText.split('\n');
+        for (let i = 0; i < lines.length; i++) {
+          if (/Total\s*Harga/i.test(lines[i])) {
+            // Cek baris ini atau baris berikutnya untuk mencari angka besar (di atas 1000)
+            const combined = (lines[i] + ' ' + (lines[i+1] || '')).replace(/\./g, '');
+            const nums = combined.match(/\b\d{4,}\b/); // Cari angka minimal ribuan
+            if (nums) {
+              amount = parseInt(nums[0], 10);
+              break;
+            }
+          }
+        }
       }
     }
     // --------------------------------------

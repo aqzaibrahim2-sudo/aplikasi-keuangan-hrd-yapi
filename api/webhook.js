@@ -57,16 +57,20 @@ export default async function handler(req, res) {
     // 4. Analisis Gambar Menggunakan Google Gemini Vision API
     const base64Image = Buffer.from(imgBuffer).toString('base64');
     
-    const promptText = `Analisis foto nota/struk belanja ini. 
-Berikan jawaban dalam format JSON mentah tanpa markdown (tanpa \`\`\`json) dengan struktur persis seperti ini:
+    const promptText = `Analisis foto nota/struk belanja ini (baik nota cetak maupun tulisan tangan manual).
+Ekstrak data berikut dan kembalikan HANYA format JSON tanpa markdown / codeblock:
 {
-  "description": "Nama toko atau keterangan singkat",
+  "description": "Nama toko/cabang/penjual atau ringkasan singkat belanjaan",
   "amount": 180000,
-  "raw_text": "Tuliskan seluruh teks yang terbaca dari nota ini"
+  "raw_text": "Tuliskan seluruh teks yang berhasil terbaca dari nota ini"
 }
-Pastikan "amount" adalah angka murni (integer) total harga akhir.`;
 
-    const geminiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
+Catatan Penting:
+- "amount" HARUS berupa angka murni (integer) tanpa titik/koma, mewakili Total Harga / Total Pembayaran akhir.
+- Jika "description" tidak ada nama toko, buatkan ringkasan singkat isi nota.`;
+
+    // Menggunakan endpoint model flash terbaru
+    const geminiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -94,10 +98,10 @@ Pastikan "amount" adalah angka murni (integer) total harga akhir.`;
 
     if (geminiData.candidates && geminiData.candidates[0]?.content?.parts[0]?.text) {
       const responseText = geminiData.candidates[0].content.parts[0].text.trim();
-      rawText = responseText; // Simpan teks mentah dari respons AI
+      rawText = responseText;
 
-      // Coba bersihkan format markdown jika Gemini tetap memunculkannya
-      const cleanJson = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
+      // Clean markdown code blocks jika AI mengembalikan dalam ```json ... ```
+      const cleanJson = responseText.replace(/```json/gi, '').replace(/```/g, '').trim();
       
       try {
         const parsed = JSON.parse(cleanJson);
@@ -105,11 +109,11 @@ Pastikan "amount" adalah angka murni (integer) total harga akhir.`;
         if (parsed.amount) amount = parseInt(parsed.amount, 10) || 0;
         if (parsed.raw_text) rawText = parsed.raw_text;
       } catch (e) {
-        // Jika gagal parsing JSON, kita coba ekstrak manual dari teks respons
-        console.error('Gagal parse JSON Gemini, menggunakan fallback teks.');
+        console.error('Gagal parse JSON Gemini, menyimpan raw text:', e);
       }
     } else {
-      rawText = JSON.stringify(geminiData); // Debug jika struktur respons berbeda
+      // Jika respons dari Gemini bukan format standar / error
+      rawText = JSON.stringify(geminiData);
     }
 
     const now = new Date();

@@ -1,5 +1,4 @@
 export default async function handler(req, res) {
-  // Telegram akan melakukan check ping / POST
   if (req.method !== 'POST') {
     return res.status(200).json({ status: 'Webhook active and ready!' });
   }
@@ -8,7 +7,6 @@ export default async function handler(req, res) {
     const update = req.body;
     const message = update.message || update.edited_message;
 
-    // Jika bukan pesan atau tidak ada foto, cukup balas HTTP 200 OK agar Telegram senang
     if (!message || !message.photo) {
       return res.status(200).json({ message: 'Bukan foto, diabaikan.' });
     }
@@ -28,9 +26,7 @@ export default async function handler(req, res) {
     const tgFileRes = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getFile?file_id=${fileId}`);
     const tgFileData = await tgFileRes.json();
     
-    if (!tgFileData.ok) {
-      throw new Error('Gagal mengambil file info dari Telegram');
-    }
+    if (!tgFileData.ok) throw new Error('Gagal mengambil file info dari Telegram');
 
     const filePath = tgFileData.result.file_path;
     const telegramImageUrl = `https://api.telegram.org/file/bot${TELEGRAM_BOT_TOKEN}/${filePath}`;
@@ -39,7 +35,7 @@ export default async function handler(req, res) {
     const imgFetch = await fetch(telegramImageUrl);
     const imgBuffer = await imgFetch.arrayBuffer();
 
-    // 3. Upload Gambar ke Supabase Storage via REST API Direct
+    // 3. Upload Gambar ke Supabase Storage
     const fileName = `receipt_${Date.now()}.jpg`;
     const uploadRes = await fetch(`${SUPABASE_URL}/storage/v1/object/receipts/${fileName}`, {
       method: 'POST',
@@ -68,9 +64,7 @@ export default async function handler(req, res) {
 
     const ocrRes = await fetch('https://api.ocr.space/parse/image', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded'
-      },
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: formData.toString()
     });
 
@@ -80,12 +74,32 @@ export default async function handler(req, res) {
       rawText = ocrData.ParsedResults[0].ParsedText || '';
     }
 
-    // Tanggal dan jam saat ini
+    // --- EKSTRAKSI CERDAS DARI TEKS OCR ---
+    let description = 'Nota Belanja Telegram';
+    let amount = 0;
+
+    if (rawText) {
+      // Cari keterangan toko/cabang (contoh: BC HNI Depok 4)
+      const hniMatch = rawText.match(/(BC\s*HNI[^\n]+)/i);
+      if (hniMatch) {
+        description = hniMatch[1].trim();
+      }
+
+      // Cari Total Harga (contoh: Total Harga : 180.000)
+      const totalMatch = rawText.match(/Total\s*Harga\s*[:\s]*([\d\.,]+)/i);
+      if (totalMatch) {
+        // Ubah format string angka "180.000" menjadi integer 180000
+        const cleanNum = totalMatch[1].replace(/\./g, '').replace(/,/g, '');
+        amount = parseInt(cleanNum, 10) || 0;
+      }
+    }
+    // --------------------------------------
+
     const now = new Date();
     const currentDate = now.toISOString().split('T')[0];
     const currentTime = now.toTimeString().split(' ')[0].substring(0, 5);
 
-    // 5. Simpan Data Transaksi ke Database Supabase via REST API
+    // 5. Simpan Data ke Database Supabase
     const dbRes = await fetch(`${SUPABASE_URL}/rest/v1/receipts`, {
       method: 'POST',
       headers: {
@@ -99,8 +113,8 @@ export default async function handler(req, res) {
         image_url: imageUrl,
         transaction_date: currentDate,
         transaction_time: currentTime,
-        description: 'Nota Belanja Telegram',
-        amount: 0,
+        description: description,
+        amount: amount,
         raw_text: rawText
       })
     });
@@ -113,7 +127,6 @@ export default async function handler(req, res) {
     return res.status(200).json({ success: true, message: 'Berhasil diproses!' });
   } catch (error) {
     console.error('Webhook Error:', error);
-    // Selalu kembalikan 200 agar Telegram tidak melakukan retry bertubi-tubi saat ada kesalahan
     return res.status(200).json({ error: error.message });
   }
 }

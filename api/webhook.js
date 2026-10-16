@@ -16,9 +16,24 @@ export default async function handler(req, res) {
     const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
     const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY;
 
-    const groupName = message.chat.title || `Grup ${message.chat.id}`;
+    const chatId = message.chat.id;
+    const messageId = message.message_id;
+    const groupName = message.chat.title || `Grup ${chatId}`;
     
-    // Ambil foto dengan resolusi tertinggi
+    // Fungsi helper untuk mengirim balasan langsung ke Telegram
+    const replyToTelegram = async (text) => {
+      await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: chatId,
+          reply_to_message_id: messageId,
+          text: text
+        })
+      });
+    };
+
+    // Ambil foto resolusi tertinggi
     const photo = message.photo[message.photo.length - 1];
     const fileId = photo.file_id;
 
@@ -54,24 +69,25 @@ export default async function handler(req, res) {
 
     const imageUrl = `${SUPABASE_URL}/storage/v1/object/public/receipts/${fileName}`;
 
-    // 4. Analisis Gambar Menggunakan DeepSeek Vision API (Ekstrak Tanggal & Waktu Nota)
+    // 4. Analisis Gambar Menggunakan DeepSeek API
     const base64Image = Buffer.from(imgBuffer).toString('base64');
     
-    const promptText = `Analisis foto nota/struk belanja ini (baik cetak maupun tulisan tangan manual).
-Ekstrak data berikut dan kembalikan HANYA format JSON tanpa markdown / codeblock:
+    const promptText = `Analisis foto bukti transaksi ini (bisa berupa nota cetak, nota tulis tangan, atau screenshot bukti transfer/QRIS/m-banking).
+Ekstrak data berikut dan kembalikan HANYA format JSON valid tanpa markdown/codeblock:
 {
-  "description": "Nama toko/cabang/penjual atau ringkasan singkat belanjaan",
+  "description": "Nama toko/cabang atau keterangan transfer/QRIS",
   "amount": 180000,
   "transaction_date": "YYYY-MM-DD",
   "transaction_time": "HH:MM",
-  "raw_text": "Tuliskan seluruh teks yang berhasil terbaca dari nota ini"
+  "is_transfer_proof": true,
+  "raw_text": "Tuliskan seluruh teks yang berhasil terbaca"
 }
 
-Catatan Penting:
-- "amount" HARUS berupa angka murni (integer) tanpa titik/koma, mewakili Total Harga / Total Pembayaran akhir.
-- "transaction_date": Ambil tanggal dari nota dan ubah ke format YYYY-MM-DD (contoh: 2026-08-27). Jika tidak ada di nota, gunakan tanggal hari ini.
-- "transaction_time": Ambil jam dari nota dalam format 24 jam HH:MM (contoh: 09:10). Jika tidak ada di nota, gunakan jam saat ini.
-- Jika "description" tidak ada nama toko, buatkan ringkasan singkat isi nota.`;
+Aturan Penting:
+1. "amount": Angka murni Total Bayar/Total Harga akhir.
+2. "transaction_date": Format YYYY-MM-DD.
+3. "transaction_time": Format HH:MM (24 jam).
+4. "is_transfer_proof": Set true JIKA gambar ini adalah bukti transfer bank/m-banking/QRIS/struk ATM. Set false jika ini adalah nota/struk belanja asli dari toko.`;
 
     const deepseekRes = await fetch('https://api.deepseek.com/chat/completions', {
       method: 'POST',
@@ -103,8 +119,8 @@ Catatan Penting:
     let description = 'Nota Belanja Telegram';
     let amount = 0;
     let rawText = '';
+    let isTransferProof = false;
     
-    // Default fallback ke waktu sekarang jika gagal dibaca AI
     const now = new Date();
     let transactionDate = now.toISOString().split('T')[0];
     let transactionTime = now.toTimeString().split(' ')[0].substring(0, 5);
@@ -121,15 +137,50 @@ Catatan Penting:
         if (parsed.amount) amount = parseInt(parsed.amount, 10) || 0;
         if (parsed.transaction_date) transactionDate = parsed.transaction_date;
         if (parsed.transaction_time) transactionTime = parsed.transaction_time;
+        if (parsed.is_transfer_proof !== undefined) isTransferProof = parsed.is_transfer_proof;
         if (parsed.raw_text) rawText = parsed.raw_text;
       } catch (e) {
-        console.error('Gagal parse JSON dari DeepSeek:', e);
+        console.error('JSON Parse error');
       }
     } else {
       rawText = JSON.stringify(deepseekData);
     }
 
-    // 5. Simpan Hasil ke Database Supabase
+    // Normalisasi format tanggal
+    if (transactionDate && /^\d{2}[-/\.]\d{2}[-/\.]\d{4}$/.test(transactionDate)) {
+      const parts = transactionDate.split(/[-/\.]/);
+      transactionDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
+    }
+
+    // --- 5. SISTEM ANTI DUPLIKASI & CROSS-CHECK SUPABASE ---
+    const checkDupRes = await fetch(`${SUPABASE_URL}/rest/v1/receipts?amount=eq.${amount}&transaction_date=eq.${transactionDate}&select=id,status`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        'apikey': SUPABASE_ANON_KEY
+      }
+    });
+
+    let existingRecords = [];
+    if (checkDupRes.ok) {
+      existingRecords = await checkDupRes.json();
+    }
+
+    let recordStatus = 'verified';
+
+    if (existingRecords.length > 0) {
+      if (isTransferProof) {
+        // Jika ini bukti transfer dan sudah ada transaksi serupa, tandai pending review
+        recordStatus = 'pending_review';
+        await replyToTelegram('⚠️ Nota/transaksi ini sudah tercatat sebelumnya. Bukti transfer/QRIS ini masuk ke antrean pemeriksaan Admin.');
+      } else {
+        // Jika nota duplikat / foto ulang identik, tolak dan beri tahu di Telegram
+        await replyToTelegram('❌ Gagal dicatat: Nota duplikat atau foto ulang terdeteksi. Nota ini sudah pernah dimasukkan ke pencatatan.');
+        return res.status(200).json({ success: false, message: 'Nota duplikat ditolak.' });
+      }
+    }
+
+    // 6. Simpan Hasil ke Database Supabase
     const dbRes = await fetch(`${SUPABASE_URL}/rest/v1/receipts`, {
       method: 'POST',
       headers: {
@@ -145,7 +196,8 @@ Catatan Penting:
         transaction_time: transactionTime,
         description: description,
         amount: amount,
-        raw_text: rawText
+        raw_text: rawText,
+        status: recordStatus
       })
     });
 
@@ -154,7 +206,13 @@ Catatan Penting:
       throw new Error(`Simpan DB Supabase Gagal: ${dbErr}`);
     }
 
-    return res.status(200).json({ success: true, message: 'Berhasil diproses oleh DeepSeek Vision!' });
+    // Jika berhasil tersimpan normal (bukan pending review)
+    if (recordStatus === 'verified') {
+      await replyToTelegram(`✅ Berhasil dicatat!\nToko: ${description}\nNominal: Rp ${amount.toLocaleString('id-ID')}`);
+    }
+
+    return res.status(200).json({ success: true, message: 'Diproses dengan sukses!' });
+
   } catch (error) {
     console.error('Webhook Error:', error);
     return res.status(200).json({ error: error.message });

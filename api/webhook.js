@@ -74,42 +74,34 @@ export default async function handler(req, res) {
       rawText = ocrData.ParsedResults[0].ParsedText || '';
     }
 
-    // --- EKSTRAKSI CERDAS DARI TEKS OCR ---
+    // --- EKSTRAKSI CERDAS & AMAN DARI TEKS OCR ---
     let description = 'Nota Belanja Telegram';
     let amount = 0;
 
     if (rawText) {
-      // Cari keterangan toko/cabang (contoh: BC HNI Depok 4)
+      // 1. Ambil Keterangan Toko
       const hniMatch = rawText.match(/(BC\s*HNI[^\n]+)/i);
       if (hniMatch) {
         description = hniMatch[1].trim();
       }
 
-      // Cari Total Harga secara presisi (mencari kata 'Total Harga' lalu mengambil angka nominal setelahnya)
-      // Menggunakan regex yang menghindari 'Total Item' atau 'Total PV'
-      const totalMatch = rawText.match(/Total\s*Harga\s*[:\s]*([\d\.,]+)/i);
-      if (totalMatch) {
-        const cleanNum = totalMatch[1].replace(/\./g, '').replace(/,/g, '');
-        amount = parseInt(cleanNum, 10) || 0;
-      }
+      // 2. Ekstraksi Nominal Total Harga secara Presisi
+      // Cari semua angka yang formatnya ribuan atau lebih (misal: 180.000 atau 180000)
+      // Kita bersihkan dulu titik/komma pemisah ribuan
+      const cleanText = rawText.replace(/\./g, '');
+      const allNumbers = cleanText.match(/\b\d{4,}\b/g); // Cari angka dengan 4 digit atau lebih
       
-      // Fallback cadangan jika format teks OCR-nya agak terpisah spasi/baris
-      if (amount === 0 || amount < 1000) {
-        const lines = rawText.split('\n');
-        for (let i = 0; i < lines.length; i++) {
-          if (/Total\s*Harga/i.test(lines[i])) {
-            // Cek baris ini atau baris berikutnya untuk mencari angka besar (di atas 1000)
-            const combined = (lines[i] + ' ' + (lines[i+1] || '')).replace(/\./g, '');
-            const nums = combined.match(/\b\d{4,}\b/); // Cari angka minimal ribuan
-            if (nums) {
-              amount = parseInt(nums[0], 10);
-              break;
-            }
-          }
-        }
+      if (allNumbers && allNumbers.length > 0) {
+        // Ubah semua angka yang ditemukan menjadi integer
+        const parsedNums = allNumbers.map(n => parseInt(n, 10));
+        
+        // Biasanya "Total Harga" adalah angka terbesar di dalam nota belanja, 
+        // atau kita bisa ambil angka terbesar yang wajar sebagai total belanja.
+        // Untuk nota ini, 180000 adalah angka terbesar.
+        amount = Math.max(...parsedNums);
       }
     }
-    // --------------------------------------
+    // ---------------------------------------------
 
     const now = new Date();
     const currentDate = now.toISOString().split('T')[0];

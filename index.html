@@ -1,1 +1,85 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard Monitoring Nota Belanja</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body class="bg-gray-50 p-6">
+  <div class="max-w-6xl mx-auto">
+    <header class="mb-8">
+      <h1 class="text-3xl font-bold text-gray-800">📊 Dashboard Nota Belanja Telegram</h1>
+      <p class="text-gray-600">Memantau transaksi dari 6 grup secara real-time</p>
+    </header>
 
+    <div id="loading" class="text-blue-600 font-medium">Memuat data transaksi...</div>
+    
+    <div id="receipts-grid" class="grid grid-cols-1 md:grid-cols-3 gap-6"></div>
+  </div>
+
+  <script>
+    const SUPABASE_URL = 'https://dnkvixelvwfzogthyrib.supabase.co';
+    const SUPABASE_ANON_KEY = 'sb_publishable_jCyZKWI0IhBLxAlkFpV_yw_3CNkeZH1';
+    const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    async function loadReceipts() {
+      const { data, error } = await supabaseClient
+        .from('receipts')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      const loadingEl = document.getElementById('loading');
+      const gridEl = document.getElementById('receipts-grid');
+      loadingEl.style.display = 'none';
+
+      if (error) {
+        gridEl.innerHTML = `<p class="text-red-500 col-span-3">Gagal memuat data: ${error.message}</p>`;
+        return;
+      }
+
+      if (!data || data.length === 0) {
+        gridEl.innerHTML = `<p class="text-gray-500 col-span-3">Belum ada data nota yang masuk dari Telegram.</p>`;
+        return;
+      }
+
+      gridEl.innerHTML = data.map(item => `
+        <div class="bg-white rounded-xl shadow-md overflow-hidden border border-gray-200 flex flex-col justify-between">
+          <div>
+            <!-- Gambar Nota -->
+            <div class="h-48 bg-gray-100 overflow-hidden relative">
+              <img src="${item.image_url || 'https://via.placeholder.com/400x200?text=No+Image'}" class="w-full h-full object-cover" alt="Struk" />
+              <span class="absolute top-2 right-2 bg-indigo-600 text-white text-xs font-bold px-2 py-1 rounded shadow">
+                ${item.group_id || 'Grup Umum'}
+              </span>
+            </div>
+
+            <!-- Detail Transaksi -->
+            <div class="p-4 space-y-2">
+              <div class="flex justify-between items-center text-xs text-gray-500">
+                <span>📅 ${item.transaction_date || '-'}</span>
+                <span>⏰ ${item.transaction_time || '-'}</span>
+              </div>
+              <h3 class="font-bold text-gray-800 text-base">${item.description || 'Keterangan belum tersedia'}</h3>
+              <p class="text-lg font-extrabold text-emerald-600">Rp ${item.amount ? Number(item.amount).toLocaleString('id-ID') : '0'}</p>
+            </div>
+          </div>
+
+          <!-- Footer Kartu: Raw Text & Waktu Masuk -->
+          <div class="bg-gray-50 p-3 border-t border-gray-100 text-xs text-gray-500">
+            <details class="cursor-pointer">
+              <summary class="font-semibold text-gray-600 hover:text-blue-600">Lihat Teks Mentah OCR</summary>
+              <p class="mt-1 font-mono text-[10px] text-gray-600 bg-white p-2 rounded border max-h-20 overflow-y-auto">
+                ${item.raw_text || 'Tidak ada teks'}
+              </p>
+            </details>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    loadReceipts();
+  </script>
+</body>
+</html>

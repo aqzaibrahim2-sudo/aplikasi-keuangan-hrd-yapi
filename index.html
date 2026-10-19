@@ -322,8 +322,8 @@
 
   <!-- Script Logika Aplikasi & Integrasi Supabase -->
   <script>
-    const SUPABASE_URL = 'https://dnkvixelvwfzogthyrib.supabase.co'; 
-    const SUPABASE_ANON_KEY = 'sb_publishable_jCyZKWI0IhBLxAlkFpV_yw_3CNkeZH1';
+    const SUPABASE_URL = 'https://YOUR_SUPABASE_PROJECT_ID.supabase.co'; 
+    const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
 
     let idleTimer;
     const IDLE_TIMEOUT_MS = 10 * 60 * 1000; // 10 Menit
@@ -412,14 +412,12 @@
         const categories = await catRes.json();
         const projects = await projRes.json();
 
-        // Render Dropdown di Modal Manual
         const catSelect = document.getElementById('m-category');
         catSelect.innerHTML = '<option value="">Pilih Kategori</option>' + categories.map(c => `<option value="${c.name}">${c.name}</option>`).join('');
         
         const projSelect = document.getElementById('m-project');
         projSelect.innerHTML = '<option value="">Pilih Proyek</option>' + projects.map(p => `<option value="${p.name}">${p.name}</option>`).join('');
 
-        // Render List Pengaturan
         document.getElementById('categories-list').innerHTML = categories.map(c => `<span class="bg-black border border-slate-700 px-2.5 py-1 rounded-lg text-slate-300 text-xs">${c.name}</span>`).join('');
         document.getElementById('projects-list').innerHTML = projects.map(p => `<span class="bg-black border border-slate-700 px-2.5 py-1 rounded-lg text-slate-300 text-xs">${p.name}</span>`).join('');
       } catch (err) {
@@ -455,7 +453,7 @@
     async function fetchTransactions() {
       const tbody = document.getElementById('transactions-table-body');
       try {
-        const res = await fetch(`${SUPABASE_URL}/rest/v1/transactions?select=*&order=id.asc`, {
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/transactions?select=*&order=transaction_date.asc,id.asc`, {
           headers: { 'Authorization': `Bearer ${SUPABASE_ANON_KEY}`, 'apikey': SUPABASE_ANON_KEY }
         });
         const data = await res.json();
@@ -478,13 +476,31 @@
         return;
       }
 
-      transactions.forEach((tx) => {
-        const isPending = tx.status === 'pending_review' || tx.status === 'suspect_double';
-        if (isPending) pendingCount++;
-        else totalVerifiedAmt += (tx.amount || 0);
+      let runningBalance = 0;
+      let proofCounter = 0;
+      let sortCounter = 0;
+
+      // Filter & render transaksi yang verified terlebih dahulu secara kronologis
+      transactions.filter(tx => tx.status === 'verified' || !tx.status).forEach((tx) => {
+        sortCounter++;
+        tx.sort_no = sortCounter;
+
+        if (tx.type === 'Kas Masuk') {
+          runningBalance += (tx.amount || 0);
+          tx.signed_amount = tx.amount || 0;
+          tx.proof_no = '-';
+        } else {
+          proofCounter++;
+          tx.proof_no = proofCounter;
+          runningBalance -= (tx.amount || 0);
+          tx.signed_amount = -(tx.amount || 0);
+        }
+
+        tx.running_balance = runningBalance;
+        totalVerifiedAmt += (tx.amount || 0);
 
         const row = document.createElement('tr');
-        row.className = `border-b border-slate-800 hover:bg-slate-800/50 transition ${isPending ? 'bg-amber-950/20' : ''}`;
+        row.className = `border-b border-slate-800 hover:bg-slate-800/50 transition`;
 
         const methodBadge = tx.input_method === 'manual' 
           ? '<span class="text-[10px] bg-gold-500/20 text-gold-400 px-1.5 py-0.5 rounded font-mono">Manual Web</span>' 
@@ -492,12 +508,12 @@
 
         row.innerHTML = `
           <td class="p-3 font-medium">${tx.source} ${methodBadge}</td>
-          <td class="p-3 text-center">${tx.sort_no || '-'}</td>
+          <td class="p-3 text-center">${tx.sort_no}</td>
           <td class="p-3">${tx.transaction_date || '-'}</td>
           <td class="p-3">${tx.month_year || '-'}</td>
           <td class="p-3">${tx.transaction_time || '-'}</td>
           <td class="p-3 font-semibold ${tx.type === 'Kas Masuk' ? 'text-emerald-400' : 'text-slate-300'}">${tx.type}</td>
-          <td class="p-3 text-center">${tx.proof_no || '-'}</td>
+          <td class="p-3 text-center">${tx.proof_no}</td>
           <td class="p-3">${tx.description}</td>
           <td class="p-3">${tx.category || '-'}</td>
           <td class="p-3">${tx.project || '-'}</td>
@@ -512,12 +528,39 @@
           <td class="p-3 text-right font-bold text-gold-400">Rp ${(tx.running_balance || 0).toLocaleString('id-ID')}</td>
           <td class="p-3 text-center space-x-2">
             ${tx.image_url ? `<button onclick="showReceipt('${tx.image_url}')" class="text-xs bg-slate-800 hover:bg-slate-700 text-gold-400 px-2 py-1 rounded">Nota</button>` : ''}
-            ${isPending ? `
-              <button onclick="updateTxStatus(${tx.id}, 'verified')" class="text-xs bg-emerald-600 hover:bg-emerald-700 text-white px-2 py-1 rounded font-bold">Sah</button>
-              <button onclick="deleteTx(${tx.id})" class="text-xs bg-rose-600 hover:bg-rose-700 text-white px-2 py-1 rounded font-bold">Tolak</button>
-            ` : `
-              <button onclick="deleteTx(${tx.id})" class="text-xs text-rose-400 hover:text-rose-300">Hapus</button>
-            `}
+            <button onclick="deleteTx(${tx.id})" class="text-xs text-rose-400 hover:text-rose-300">Hapus</button>
+          </td>
+        `;
+        tbody.appendChild(row);
+      });
+
+      // Render transaksi yang masih pending / review / suspect_double di bagian bawah
+      transactions.filter(tx => tx.status === 'pending_review' || tx.status === 'suspect_double').forEach(tx => {
+        pendingCount++;
+        const row = document.createElement('tr');
+        row.className = `border-b border-slate-800 bg-amber-950/20 hover:bg-amber-950/30 transition`;
+        row.innerHTML = `
+          <td class="p-3 font-medium">${tx.source} <span class="text-[10px] bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded font-mono">Pending Review</span></td>
+          <td class="p-3 text-center">-</td>
+          <td class="p-3">${tx.transaction_date || '-'}</td>
+          <td class="p-3">${tx.month_year || '-'}</td>
+          <td class="p-3">${tx.transaction_time || '-'}</td>
+          <td class="p-3 font-semibold text-slate-300">${tx.type}</td>
+          <td class="p-3 text-center">-</td>
+          <td class="p-3">${tx.description}</td>
+          <td class="p-3">${tx.category || '-'}</td>
+          <td class="p-3">${tx.project || '-'}</td>
+          <td class="p-3 text-right">Rp ${(tx.unit_price || 0).toLocaleString('id-ID')}</td>
+          <td class="p-3 text-center">${tx.quantity || 1}</td>
+          <td class="p-3">${tx.unit || 'Paket'}</td>
+          <td class="p-3 text-center">${tx.percentage || 100}%</td>
+          <td class="p-3 text-right font-semibold">Rp ${(tx.amount || 0).toLocaleString('id-ID')}</td>
+          <td class="p-3 text-right font-semibold text-rose-400">-</td>
+          <td class="p-3 text-right font-bold text-slate-500">-</td>
+          <td class="p-3 text-center space-x-2">
+            ${tx.image_url ? `<button onclick="showReceipt('${tx.image_url}')" class="text-xs bg-slate-800 hover:bg-slate-700 text-gold-400 px-2 py-1 rounded">Nota</button>` : ''}
+            <button onclick="updateTxStatus(${tx.id}, 'verified')" class="text-xs bg-emerald-600 hover:bg-emerald-700 text-white px-2 py-1 rounded font-bold">Sah</button>
+            <button onclick="deleteTx(${tx.id})" class="text-xs bg-rose-600 hover:bg-rose-700 text-white px-2 py-1 rounded font-bold">Tolak</button>
           </td>
         `;
         tbody.appendChild(row);
@@ -563,7 +606,6 @@
       const percentage = parseFloat(document.getElementById('m-percentage').value) || 100;
       const amount = unitPrice * qty * (percentage / 100);
 
-      // Upload file ke Supabase Storage
       const fileName = `manual_${Date.now()}_${file.name}`;
       const uploadRes = await fetch(`${SUPABASE_URL}/storage/v1/object/receipts/${fileName}`, {
         method: 'POST',

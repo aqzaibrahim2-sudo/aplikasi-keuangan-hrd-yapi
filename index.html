@@ -9,6 +9,32 @@
 </head>
 <body class="bg-slate-50 min-h-screen text-slate-800">
 
+  <!-- Modal / Layar Masukkan PIN -->
+  <div id="pin-modal" class="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-xl max-w-md w-full p-8 text-center border border-slate-100">
+      <div class="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-full flex items-center justify-center mx-auto mb-4 text-xl font-bold">
+        🔒
+      </div>
+      <h2 class="text-xl font-bold text-slate-900 mb-2">Akses Terbatas</h2>
+      <p class="text-sm text-slate-500 mb-6">Masukkan PIN Keuangan Yayasan untuk membuka *dashboard*.</p>
+      
+      <form onsubmit="handleLogin(event)" class="space-y-4">
+        <input 
+          type="password" 
+          id="pin-input" 
+          placeholder="Masukkan PIN rahasia" 
+          maxlength="6"
+          required
+          class="w-full px-4 py-3 text-center tracking-widest text-lg border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+        >
+        <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 rounded-xl transition shadow-sm">
+          Buka Dashboard
+        </button>
+      </form>
+      <p id="pin-error" class="text-xs text-rose-500 mt-3 hidden">PIN salah, silakan coba lagi.</p>
+    </div>
+  </div>
+
   <!-- Header -->
   <header class="bg-white shadow-sm border-b border-slate-200 py-6 mb-8">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row justify-between items-center gap-4">
@@ -18,9 +44,14 @@
         </h1>
         <p class="text-sm text-slate-500 mt-1">Memantau transaksi, anti-duplikasi, dan pemeriksaan dobel transaksi secara real-time</p>
       </div>
-      <button onclick="fetchReceipts()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition shadow-sm">
-        🔄 Refresh Data
-      </button>
+      <div class="flex items-center gap-3">
+        <button onclick="lockDashboardManually()" class="bg-slate-200 hover:bg-slate-300 text-slate-700 px-3 py-2 rounded-lg text-sm font-medium transition">
+          🔒 Kunci
+        </button>
+        <button onclick="fetchReceipts()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition shadow-sm">
+          🔄 Refresh Data
+        </button>
+      </div>
     </div>
   </header>
 
@@ -52,11 +83,85 @@
 
   </main>
 
-  <!-- Script Integrasi Supabase Client-Side -->
+  <!-- Script Integrasi & Keamanan PIN -->
   <script>
-    // Masukkan URL dan Anon Key Supabase Anda di sini
-    const SUPABASE_URL = 'https://dnkvixelvwfzogthyrib.supabase.co'; 
-    const SUPABASE_ANON_KEY = 'sb_publishable_jCyZKWI0IhBLxAlkFpV_yw_3CNkeZH1';
+    // ⚙️ ATUR PIN RAHASIA ANDA DI SINI
+    const CORRECT_PIN = '123456'; // Silakan ubah sesuai keinginan Anda
+
+    // Konfigurasi Supabase
+    const SUPABASE_URL = 'https://YOUR_SUPABASE_PROJECT_ID.supabase.co'; 
+    const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
+
+    let idleTimer;
+    const IDLE_TIMEOUT_MS = 10 * 60 * 1000; // 10 Menit
+
+    // Cek status login saat halaman pertama kali dimuat
+    window.addEventListener('DOMContentLoaded', () => {
+      const isUnlocked = sessionStorage.getItem('dashboard_unlocked');
+      if (isUnlocked === 'true') {
+        document.getElementById('pin-modal').classList.add('hidden');
+        resetIdleTimer();
+        fetchReceipts();
+      }
+    });
+
+    async function handleLogin(event) {
+      event.preventDefault();
+      const inputPin = document.getElementById('pin-input').value;
+      const errorText = document.getElementById('pin-error');
+
+      try {
+        // Kirim PIN ke API Vercel untuk diverifikasi di sisi server
+        const response = await fetch('/api/verify-pin', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ pin: inputPin })
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+          sessionStorage.setItem('dashboard_unlocked', 'true');
+          document.getElementById('pin-modal').classList.add('hidden');
+          errorText.classList.add('hidden');
+          document.getElementById('pin-input').value = '';
+          resetIdleTimer();
+          fetchReceipts();
+        } else {
+          errorText.classList.remove('hidden');
+        }
+      } catch (err) {
+        console.error(err);
+        errorText.innerText = 'Terjadi kesalahan koneksi ke server.';
+        errorText.classList.remove('hidden');
+      }
+    }
+
+    function lockDashboardManually() {
+      sessionStorage.removeItem('dashboard_unlocked');
+      document.getElementById('pin-modal').classList.remove('hidden');
+      clearTimeout(idleTimer);
+    }
+
+    // Sistem Idle Timeout (10 Menit)
+    function resetIdleTimer() {
+      clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => {
+        lockDashboardManually();
+        alert('Sesi Anda telah berakhir karena tidak ada aktivitas selama 10 menit. Silakan masukkan PIN kembali.');
+      }, IDLE_TIMEOUT_MS);
+    }
+
+    // Pantau aktivitas pengguna (klik, ketik, gerakan mouse)
+    ['mousemove', 'keydown', 'click', 'scroll', 'touchstart'].forEach(event => {
+      window.addEventListener(event, () => {
+        if (sessionStorage.getItem('dashboard_unlocked') === 'true') {
+          resetIdleTimer();
+        }
+      });
+    });
 
     async function fetchReceipts() {
       const container = document.getElementById('receipts-container');
@@ -197,15 +302,12 @@
       }
     }
 
-    // Fungsi Hapus Data + File Fisik di Storage Supabase
     async function deleteRecord(id, imageUrl) {
       if (!confirm('Yakin ingin menghapus data transaksi ini beserta file gambarnya dari sistem?')) return;
 
       try {
-        // 1. Hapus file fisik dari Supabase Storage menggunakan path nama file murni
         if (imageUrl) {
           const fileName = imageUrl.split('/receipts/')[1];
-
           if (fileName) {
             await fetch(`${SUPABASE_URL}/storage/v1/object/receipts/${fileName}`, {
               method: 'DELETE',
@@ -217,7 +319,6 @@
           }
         }
 
-        // 2. Hapus baris data dari tabel database Supabase
         const res = await fetch(`${SUPABASE_URL}/rest/v1/receipts?id=eq.${id}`, {
           method: 'DELETE',
           headers: {
@@ -233,8 +334,6 @@
         alert('Terjadi kesalahan: ' + err.message);
       }
     }
-
-    fetchReceipts();
   </script>
 </body>
 </html>

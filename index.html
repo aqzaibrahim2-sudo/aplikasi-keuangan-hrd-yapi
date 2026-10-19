@@ -141,6 +141,81 @@
     </div>
   </div>
 
+  <!-- Modal Form Edit Transaksi -->
+  <div id="edit-tx-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-slate-900 rounded-2xl max-w-xl w-full p-6 border border-gold-500/30 max-h-[90vh] overflow-y-auto">
+      <div class="flex justify-between items-center mb-4">
+        <h3 class="text-lg font-bold text-gold-400">✏️ Edit Transaksi</h3>
+        <button onclick="closeEditModal()" class="text-slate-400 hover:text-white text-xl font-bold">&times;</button>
+      </div>
+      
+      <form onsubmit="handleEditSubmit(event)" class="space-y-4 text-sm">
+        <input type="hidden" id="edit-id">
+
+        <div>
+          <label class="block text-slate-400 mb-1">Sumber *</label>
+          <input type="text" id="edit-source" required class="w-full bg-black border border-slate-700 rounded-lg p-2.5 text-white focus:ring-2 focus:ring-gold-500">
+        </div>
+        
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="block text-slate-400 mb-1">Tanggal Transaksi *</label>
+            <input type="date" id="edit-date" required class="w-full bg-black border border-slate-700 rounded-lg p-2.5 text-white focus:ring-2 focus:ring-gold-500">
+          </div>
+          <div>
+            <label class="block text-slate-400 mb-1">Waktu</label>
+            <input type="time" id="edit-time" class="w-full bg-black border border-slate-700 rounded-lg p-2.5 text-white focus:ring-2 focus:ring-gold-500">
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-slate-400 mb-1">Uraian / Keterangan *</label>
+          <input type="text" id="edit-desc" required class="w-full bg-black border border-slate-700 rounded-lg p-2.5 text-white focus:ring-2 focus:ring-gold-500">
+        </div>
+
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="block text-slate-400 mb-1">Kategori</label>
+            <select id="edit-category" class="w-full bg-black border border-slate-700 rounded-lg p-2.5 text-white focus:ring-2 focus:ring-gold-500">
+              <option value="">Pilih Kategori</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-slate-400 mb-1">Proyek / Kegiatan</label>
+            <select id="edit-project" class="w-full bg-black border border-slate-700 rounded-lg p-2.5 text-white focus:ring-2 focus:ring-gold-500">
+              <option value="">Pilih Proyek</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-3 gap-3">
+          <div>
+            <label class="block text-slate-400 mb-1">Harga Satuan *</label>
+            <input type="number" id="edit-price" required min="0" class="w-full bg-black border border-slate-700 rounded-lg p-2.5 text-white focus:ring-2 focus:ring-gold-500">
+          </div>
+          <div>
+            <label class="block text-slate-400 mb-1">Banyak</label>
+            <input type="number" id="edit-qty" min="1" class="w-full bg-black border border-slate-700 rounded-lg p-2.5 text-white focus:ring-2 focus:ring-gold-500">
+          </div>
+          <div>
+            <label class="block text-slate-400 mb-1">Satuan</label>
+            <input type="text" id="edit-unit" class="w-full bg-black border border-slate-700 rounded-lg p-2.5 text-white focus:ring-2 focus:ring-gold-500">
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-slate-400 mb-1">Persentase (%)</label>
+          <input type="number" id="edit-percentage" min="0" max="100" class="w-full bg-black border border-slate-700 rounded-lg p-2.5 text-white focus:ring-2 focus:ring-gold-500">
+        </div>
+
+        <div class="pt-4 flex gap-3">
+          <button type="button" onclick="closeEditModal()" class="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold py-2.5 rounded-xl transition">Batal</button>
+          <button type="submit" class="flex-1 bg-gold-500 hover:bg-gold-600 text-black font-bold py-2.5 rounded-xl transition">Update Transaksi</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- Header & Navigasi Menu Utama -->
   <header class="bg-slate-900 border-b border-slate-800 sticky top-0 z-40">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col md:flex-row justify-between items-center gap-4">
@@ -187,7 +262,7 @@
           <p id="dash-period-dates" class="text-xs text-slate-500 mt-1">-</p>
         </div>
         <div class="bg-slate-900 p-6 rounded-2xl border border-slate-800">
-          <p class="text-xs font-medium text-slate-400 uppercase tracking-wider">Total Nominal (Periode Aktif)</p>
+          <p class="text-xs font-medium text-slate-400 uppercase tracking-wider">Total Pengeluaran (Periode Aktif)</p>
           <p id="dash-total-amount" class="text-2xl font-black text-white mt-2">Rp 0</p>
         </div>
         <div class="bg-slate-900 p-6 rounded-2xl border border-slate-800">
@@ -251,7 +326,7 @@
     <section id="tab-content-settings" class="space-y-8 hidden">
       <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
         
-        <!-- Manajemen Periode Laporan (Dropdown Otomatis + Single Active Rule) -->
+        <!-- Manajemen Periode Laporan -->
         <div class="bg-slate-900 p-6 rounded-2xl border border-slate-800 space-y-4">
           <h3 class="font-bold text-gold-400 text-base flex items-center gap-2">
             📅 Manajemen Periode & Saldo Awal
@@ -335,7 +410,8 @@
     const SUPABASE_ANON_KEY = 'sb_publishable_jCyZKWI0IhBLxAlkFpV_yw_3CNkeZH1';
 
     let idleTimer;
-    let allPeriodsCache = [];
+    let activePeriodObj = null;
+    let allTransactionsCache = [];
     const IDLE_TIMEOUT_MS = 10 * 60 * 1000; // 10 Menit
 
     window.addEventListener('DOMContentLoaded', () => {
@@ -406,10 +482,10 @@
     }
 
     async function fetchAllData() {
+      await fetchPeriods(); // Load periode terlebih dahulu untuk mendapat Saldo Awal & Deposit
       await Promise.all([
         fetchTransactions(),
-        fetchMasterData(),
-        fetchPeriods()
+        fetchMasterData()
       ]);
     }
 
@@ -422,11 +498,16 @@
         const categories = await catRes.json();
         const projects = await projRes.json();
 
-        const catSelect = document.getElementById('m-category');
-        catSelect.innerHTML = '<option value="">Pilih Kategori</option>' + categories.map(c => `<option value="${c.name}">${c.name}</option>`).join('');
-        
-        const projSelect = document.getElementById('m-project');
-        projSelect.innerHTML = '<option value="">Pilih Proyek</option>' + projects.map(p => `<option value="${p.name}">${p.name}</option>`).join('');
+        // Populate dropdown modal manual & edit
+        ['m-category', 'edit-category'].forEach(id => {
+          const el = document.getElementById(id);
+          el.innerHTML = '<option value="">Pilih Kategori</option>' + categories.map(c => `<option value="${c.name}">${c.name}</option>`).join('');
+        });
+
+        ['m-project', 'edit-project'].forEach(id => {
+          const el = document.getElementById(id);
+          el.innerHTML = '<option value="">Pilih Proyek</option>' + projects.map(p => `<option value="${p.name}">${p.name}</option>`).join('');
+        });
 
         document.getElementById('categories-list').innerHTML = categories.map(c => `<span class="bg-black border border-slate-700 px-2.5 py-1 rounded-lg text-slate-300 text-xs">${c.name}</span>`).join('');
         document.getElementById('projects-list').innerHTML = projects.map(p => `<span class="bg-black border border-slate-700 px-2.5 py-1 rounded-lg text-slate-300 text-xs">${p.name}</span>`).join('');
@@ -465,6 +546,8 @@
         const selectEl = document.getElementById('p-select');
         selectEl.innerHTML = '';
 
+        activePeriodObj = periods.find(p => p.status === 'Active') || null;
+
         generatedDefaults.forEach(def => {
           const existing = periods.find(p => p.start_date === def.start_date);
           const periodObj = existing || { ...def, status: 'Draft', initial_balance: 0, deposit: 0 };
@@ -476,7 +559,6 @@
           selectEl.appendChild(opt);
         });
 
-        allPeriodsCache = periods;
         onPeriodSelectChange();
         renderPeriodListSummary(periods);
       } catch (err) {
@@ -498,6 +580,7 @@
     function renderPeriodListSummary(periods) {
       const activePeriod = periods.find(p => p.status === 'Active');
       if (activePeriod) {
+        activePeriodObj = activePeriod;
         document.getElementById('active-period-badge').innerText = `Periode Aktif: ${activePeriod.period_name} (${activePeriod.start_date} s.d. ${activePeriod.end_date})`;
         document.getElementById('dash-period-name').innerText = activePeriod.period_name;
         document.getElementById('dash-period-dates').innerText = `${activePeriod.start_date} s.d. ${activePeriod.end_date}`;
@@ -554,7 +637,7 @@
         }
 
         alert(`Periode "${selectedPeriod.period_name}" berhasil diperbarui!`);
-        fetchPeriods();
+        await fetchAllData();
       } catch (err) {
         alert('Gagal memperbarui periode.');
       }
@@ -567,6 +650,7 @@
           headers: { 'Authorization': `Bearer ${SUPABASE_ANON_KEY}`, 'apikey': SUPABASE_ANON_KEY }
         });
         const data = await res.json();
+        allTransactionsCache = data;
         renderTransactionsTable(data);
       } catch (err) {
         tbody.innerHTML = `<tr><td colspan="18" class="text-center py-12 text-rose-400">Gagal memuat data transaksi.</td></tr>`;
@@ -579,18 +663,77 @@
 
       let totalVerifiedAmt = 0;
       let pendingCount = 0;
-
-      if (transactions.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="18" class="text-center py-12 text-slate-500">Belum ada data transaksi tercatat.</td></tr>`;
-        updateDashboardSummary(0, 0);
-        return;
-      }
-
       let runningBalance = 0;
-      let proofCounter = 0;
       let sortCounter = 0;
+      let proofCounter = 0;
 
-      transactions.filter(tx => tx.status === 'verified' || !tx.status).forEach((tx) => {
+      // ------------------------------------------------------------------------
+      // 1. BARIS 1 & BARIS 2 AUTOMATIS (SALDO AWAL & DEPOSIT KAS MASUK)
+      // ------------------------------------------------------------------------
+      const initialBal = activePeriodObj ? (activePeriodObj.initial_balance || 0) : 0;
+      const depositBal = activePeriodObj ? (activePeriodObj.deposit || 0) : 0;
+      const periodStart = activePeriodObj ? activePeriodObj.start_date : '-';
+
+      // Baris 1: Saldo Awal
+      sortCounter++;
+      runningBalance += initialBal;
+      const row1 = document.createElement('tr');
+      row1.className = 'border-b border-slate-800 bg-emerald-950/20 font-semibold';
+      row1.innerHTML = `
+        <td class="p-3">Sistem (Admin)</td>
+        <td class="p-3 text-center">${sortCounter}</td>
+        <td class="p-3">${periodStart}</td>
+        <td class="p-3">-</td>
+        <td class="p-3">-</td>
+        <td class="p-3 text-emerald-400">Kas Masuk</td>
+        <td class="p-3 text-center">-</td>
+        <td class="p-3">Saldo Awal Periode</td>
+        <td class="p-3">-</td>
+        <td class="p-3">-</td>
+        <td class="p-3 text-right">Rp ${initialBal.toLocaleString('id-ID')}</td>
+        <td class="p-3 text-center">1</td>
+        <td class="p-3">Paket</td>
+        <td class="p-3 text-center">100%</td>
+        <td class="p-3 text-right">Rp ${initialBal.toLocaleString('id-ID')}</td>
+        <td class="p-3 text-right text-emerald-400">${initialBal.toLocaleString('id-ID')}</td>
+        <td class="p-3 text-right font-bold text-gold-400">Rp ${runningBalance.toLocaleString('id-ID')}</td>
+        <td class="p-3 text-center text-slate-500">-</td>
+      `;
+      tbody.appendChild(row1);
+
+      // Baris 2: Deposit
+      sortCounter++;
+      runningBalance += depositBal;
+      const row2 = document.createElement('tr');
+      row2.className = 'border-b border-slate-800 bg-emerald-950/20 font-semibold';
+      row2.innerHTML = `
+        <td class="p-3">Sistem (Admin)</td>
+        <td class="p-3 text-center">${sortCounter}</td>
+        <td class="p-3">${periodStart}</td>
+        <td class="p-3">-</td>
+        <td class="p-3">-</td>
+        <td class="p-3 text-emerald-400">Kas Masuk</td>
+        <td class="p-3 text-center">-</td>
+        <td class="p-3">Deposit Periode</td>
+        <td class="p-3">-</td>
+        <td class="p-3">-</td>
+        <td class="p-3 text-right">Rp ${depositBal.toLocaleString('id-ID')}</td>
+        <td class="p-3 text-center">1</td>
+        <td class="p-3">Paket</td>
+        <td class="p-3 text-center">100%</td>
+        <td class="p-3 text-right">Rp ${depositBal.toLocaleString('id-ID')}</td>
+        <td class="p-3 text-right text-emerald-400">${depositBal.toLocaleString('id-ID')}</td>
+        <td class="p-3 text-right font-bold text-gold-400">Rp ${runningBalance.toLocaleString('id-ID')}</td>
+        <td class="p-3 text-center text-slate-500">-</td>
+      `;
+      tbody.appendChild(row2);
+
+      // ------------------------------------------------------------------------
+      // 2. BARIS TRANSAKSI VERIFIED (KAS KELUAR / KAS MASUK TAMBAHAN)
+      // ------------------------------------------------------------------------
+      const verifiedList = transactions.filter(tx => tx.status === 'verified' || !tx.status);
+
+      verifiedList.forEach((tx) => {
         sortCounter++;
         tx.sort_no = sortCounter;
 
@@ -603,10 +746,10 @@
           tx.proof_no = proofCounter;
           runningBalance -= (tx.amount || 0);
           tx.signed_amount = -(tx.amount || 0);
+          totalVerifiedAmt += (tx.amount || 0);
         }
 
         tx.running_balance = runningBalance;
-        totalVerifiedAmt += (tx.amount || 0);
 
         const row = document.createElement('tr');
         row.className = `border-b border-slate-800 hover:bg-slate-800/50 transition`;
@@ -635,14 +778,18 @@
             ${tx.signed_amount < 0 ? `(${Math.abs(tx.signed_amount).toLocaleString('id-ID')})` : tx.signed_amount.toLocaleString('id-ID')}
           </td>
           <td class="p-3 text-right font-bold text-gold-400">Rp ${(tx.running_balance || 0).toLocaleString('id-ID')}</td>
-          <td class="p-3 text-center space-x-2">
+          <td class="p-3 text-center space-x-1">
             ${tx.image_url ? `<button onclick="showReceipt('${tx.image_url}')" class="text-xs bg-slate-800 hover:bg-slate-700 text-gold-400 px-2 py-1 rounded">Nota</button>` : ''}
+            <button onclick="openEditModal(${tx.id})" class="text-xs bg-slate-800 hover:bg-slate-700 text-indigo-300 px-2 py-1 rounded font-semibold">Edit</button>
             <button onclick="deleteTx(${tx.id})" class="text-xs text-rose-400 hover:text-rose-300">Hapus</button>
           </td>
         `;
         tbody.appendChild(row);
       });
 
+      // ------------------------------------------------------------------------
+      // 3. BARIS TRANSAKSI PENDING REVIEW
+      // ------------------------------------------------------------------------
       transactions.filter(tx => tx.status === 'pending_review' || tx.status === 'suspect_double').forEach(tx => {
         pendingCount++;
         const row = document.createElement('tr');
@@ -665,7 +812,7 @@
           <td class="p-3 text-right font-semibold">Rp ${(tx.amount || 0).toLocaleString('id-ID')}</td>
           <td class="p-3 text-right font-semibold text-rose-400">-</td>
           <td class="p-3 text-right font-bold text-slate-500">-</td>
-          <td class="p-3 text-center space-x-2">
+          <td class="p-3 text-center space-x-1">
             ${tx.image_url ? `<button onclick="showReceipt('${tx.image_url}')" class="text-xs bg-slate-800 hover:bg-slate-700 text-gold-400 px-2 py-1 rounded">Nota</button>` : ''}
             <button onclick="updateTxStatus(${tx.id}, 'verified')" class="text-xs bg-emerald-600 hover:bg-emerald-700 text-white px-2 py-1 rounded font-bold">Sah</button>
             <button onclick="deleteTx(${tx.id})" class="text-xs bg-rose-600 hover:bg-rose-700 text-white px-2 py-1 rounded font-bold">Tolak</button>
@@ -697,6 +844,72 @@
 
     function closeManualModal() {
       document.getElementById('manual-tx-modal').classList.add('hidden');
+    }
+
+    function openEditModal(txId) {
+      const tx = allTransactionsCache.find(t => t.id === txId);
+      if (!tx) return;
+
+      document.getElementById('edit-id').value = tx.id;
+      document.getElementById('edit-source').value = tx.source || '';
+      document.getElementById('edit-date').value = tx.transaction_date || '';
+      document.getElementById('edit-time').value = tx.transaction_time || '';
+      document.getElementById('edit-desc').value = tx.description || '';
+      document.getElementById('edit-category').value = tx.category || '';
+      document.getElementById('edit-project').value = tx.project || '';
+      document.getElementById('edit-price').value = tx.unit_price || 0;
+      document.getElementById('edit-qty').value = tx.quantity || 1;
+      document.getElementById('edit-unit').value = tx.unit || 'Paket';
+      document.getElementById('edit-percentage').value = tx.percentage || 100;
+
+      document.getElementById('edit-tx-modal').classList.remove('hidden');
+    }
+
+    function closeEditModal() {
+      document.getElementById('edit-tx-modal').classList.add('hidden');
+    }
+
+    async function handleEditSubmit(e) {
+      e.preventDefault();
+      const txId = document.getElementById('edit-id').value;
+      const dateStr = document.getElementById('edit-date').value;
+      const [year, month] = dateStr.split('-');
+      const monthYear = `${month}/${year}`;
+
+      const unitPrice = parseFloat(document.getElementById('edit-price').value) || 0;
+      const qty = parseFloat(document.getElementById('edit-qty').value) || 1;
+      const percentage = parseFloat(document.getElementById('edit-percentage').value) || 100;
+      const amount = unitPrice * qty * (percentage / 100);
+
+      const payload = {
+        source: document.getElementById('edit-source').value,
+        transaction_date: dateStr,
+        month_year: monthYear,
+        transaction_time: document.getElementById('edit-time').value || null,
+        description: document.getElementById('edit-desc').value,
+        category: document.getElementById('edit-category').value,
+        project: document.getElementById('edit-project').value,
+        unit_price: unitPrice,
+        quantity: qty,
+        unit: document.getElementById('edit-unit').value,
+        percentage: percentage,
+        amount: amount,
+        signed_amount: -amount
+      };
+
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/transactions?id=eq.${txId}`, {
+        method: 'PATCH',
+        headers: { 'Authorization': `Bearer ${SUPABASE_ANON_KEY}`, 'apikey': SUPABASE_ANON_KEY, 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (res.ok) {
+        closeEditModal();
+        fetchAllData();
+        alert('Transaksi berhasil di-update!');
+      } else {
+        alert('Gagal meng-update transaksi.');
+      }
     }
 
     async function handleManualSubmit(e) {

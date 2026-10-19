@@ -252,45 +252,55 @@
       <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
         
         <!-- Manajemen Periode Laporan -->
-        <div class="bg-slate-900 p-6 rounded-2xl border border-slate-800 space-y-4">
-          <h3 class="font-bold text-gold-400 text-base">📅 Manajemen Periode & Saldo Awal</h3>
-          <form onsubmit="handleSavePeriod(event)" class="space-y-3 text-xs">
-            <div>
-              <label class="block text-slate-400 mb-1">Nama Periode</label>
-              <input type="text" id="p-name" required placeholder="Contoh: Periode Agustus 2026" class="w-full bg-black border border-slate-700 rounded-lg p-2 text-white">
-            </div>
-            <div class="grid grid-cols-2 gap-3">
-              <div>
-                <label class="block text-slate-400 mb-1">Tanggal Mulai (26)</label>
-                <input type="date" id="p-start" required class="w-full bg-black border border-slate-700 rounded-lg p-2 text-white">
-              </div>
-              <div>
-                <label class="block text-slate-400 mb-1">Tanggal Selesai (25)</label>
-                <input type="date" id="p-end" required class="w-full bg-black border border-slate-700 rounded-lg p-2 text-white">
-              </div>
-            </div>
-            <div class="grid grid-cols-2 gap-3">
-              <div>
-                <label class="block text-slate-400 mb-1">Saldo Awal (Opsional)</label>
-                <input type="number" id="p-initial" placeholder="0" class="w-full bg-black border border-slate-700 rounded-lg p-2 text-white">
-              </div>
-              <div>
-                <label class="block text-slate-400 mb-1">Deposit (Opsional)</label>
-                <input type="number" id="p-deposit" placeholder="0" class="w-full bg-black border border-slate-700 rounded-lg p-2 text-white">
-              </div>
-            </div>
-            <div>
-              <label class="block text-slate-400 mb-1">Status Periode</label>
-              <select id="p-status" class="w-full bg-black border border-slate-700 rounded-lg p-2 text-white">
-                <option value="Active">Aktif</option>
-                <option value="Draft">Draft</option>
-                <option value="Closed">Ditutup (Kunci)</option>
-              </select>
-            </div>
-            <button type="submit" class="w-full bg-gold-500 hover:bg-gold-600 text-black font-bold py-2 rounded-lg transition">Simpan / Buat Periode</button>
-          </form>
-          <div id="periods-list" class="mt-4 space-y-2 text-xs"></div>
-        </div>
+<div class="bg-slate-900 p-6 rounded-2xl border border-slate-800 space-y-4">
+  <h3 class="font-bold text-gold-400 text-base flex items-center gap-2">
+    📅 Manajemen Periode & Saldo Awal
+  </h3>
+  
+  <form onsubmit="handleUpdatePeriod(event)" class="space-y-4 text-xs">
+    <div>
+      <label class="block text-slate-400 mb-1">Pilih Periode Transaksi *</label>
+      <select id="p-select" onchange="onPeriodSelectChange()" required class="w-full bg-black border border-slate-700 rounded-lg p-2.5 text-white focus:ring-2 focus:ring-gold-500">
+        <option value="">Memuat daftar periode...</option>
+      </select>
+    </div>
+
+    <!-- Informasi Otomatis Rentang Tanggal -->
+    <div class="bg-black/50 p-3 rounded-lg border border-slate-800 flex justify-between items-center text-slate-300">
+      <span>Rentang Cutoff:</span>
+      <span id="p-date-range-info" class="font-mono text-gold-400">- s.d. -</span>
+    </div>
+
+    <div class="grid grid-cols-2 gap-3">
+      <div>
+        <label class="block text-slate-400 mb-1">Saldo Awal (Opsional)</label>
+        <input type="number" id="p-initial" placeholder="0" min="0" class="w-full bg-black border border-slate-700 rounded-lg p-2.5 text-white focus:ring-2 focus:ring-gold-500">
+      </div>
+      <div>
+        <label class="block text-slate-400 mb-1">Deposit (Opsional)</label>
+        <input type="number" id="p-deposit" placeholder="0" min="0" class="w-full bg-black border border-slate-700 rounded-lg p-2.5 text-white focus:ring-2 focus:ring-gold-500">
+      </div>
+    </div>
+
+    <div>
+      <label class="block text-slate-400 mb-1">Status Periode *</label>
+      <select id="p-status" class="w-full bg-black border border-slate-700 rounded-lg p-2.5 text-white focus:ring-2 focus:ring-gold-500">
+        <option value="Active">Aktif (Hanya 1 Periode)</option>
+        <option value="Draft">Draft</option>
+        <option value="Closed">Ditutup (Kunci Transaksi)</option>
+      </select>
+    </div>
+
+    <button type="submit" class="w-full bg-gold-500 hover:bg-gold-600 text-black font-bold py-2.5 rounded-xl transition shadow-lg shadow-gold-500/10">
+      Simpan Perubahan Periode
+    </button>
+  </form>
+
+  <div class="pt-2">
+    <p class="text-[11px] text-slate-400 font-semibold mb-2">Daftar Periode Tersimpan:</p>
+    <div id="periods-list" class="space-y-2 text-xs max-h-48 overflow-y-auto pr-1"></div>
+  </div>
+</div>
 
         <!-- Master Kategori & Proyek -->
         <div class="space-y-6">

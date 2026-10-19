@@ -1,3 +1,5 @@
+import crypto from 'crypto';
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(200).json({ status: 'Webhook active and ready!' });
@@ -46,12 +48,36 @@ export default async function handler(req, res) {
     const filePath = tgFileData.result.file_path;
     const telegramImageUrl = `https://api.telegram.org/file/bot${TELEGRAM_BOT_TOKEN}/${filePath}`;
 
-    // 2. Unduh Gambar ke Memori (Buffer Sementara) - BELUM UPLOAD KE STORAGE
+    // 2. Unduh Gambar ke Memori & Hitung MD5 Hash (Lapis Anti-Duplikat File Identik)
     const imgFetch = await fetch(telegramImageUrl);
     const imgBuffer = await imgFetch.arrayBuffer();
-    const base64Image = Buffer.from(imgBuffer).toString('base64');
+    const buffer = Buffer.from(imgBuffer);
+    
+    // Hash MD5 Unik Berdasarkan Piksel Gambar
+    const imageHash = crypto.createHash('md5').update(buffer).digest('hex');
+    const fileName = `receipt_${imageHash}.jpg`;
+    const targetImageUrl = `${SUPABASE_URL}/storage/v1/object/public/receipts/${fileName}`;
 
-    // 3. Analisis Gambar Menggunakan DeepSeek API
+    // --- CEK LAPIS 1: Cek apakah foto identik ini sudah pernah ada di Database Supabase ---
+    const checkHashRes = await fetch(`${SUPABASE_URL}/rest/v1/receipts?image_url=eq.${encodeURIComponent(targetImageUrl)}&select=id,group_id`, {
+      headers: {
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        'apikey': SUPABASE_ANON_KEY
+      }
+    });
+
+    if (checkHashRes.ok) {
+      const existingHash = await checkHashRes.json();
+      if (existingHash.length > 0) {
+        const groupInfo = existingHash[0].group_id || 'grup lain';
+        await replyToTelegram(`❌ Gagal dicatat: Gambar nota ini IDENTIK dengan yang sudah pernah diunggah (tercatat di: ${groupInfo}).`);
+        return res.status(200).json({ success: false, message: 'Foto identik terdeteksi via MD5 Hash.' });
+      }
+    }
+
+    // 3. Analisis Gambar Menggunakan DeepSeek API (Jika Lolos Cek Lapis 1)
+    const base64Image = buffer.toString('base64');
+    
     const promptText = `Analisis foto bukti transaksi ini (bisa berupa nota cetak, nota tulis tangan, atau screenshot bukti transfer/QRIS/m-banking).
 Ekstrak data berikut dan kembalikan HANYA format JSON valid tanpa markdown/codeblock:
 {
@@ -132,8 +158,8 @@ Aturan Penting:
       transactionDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
     }
 
-    // --- 4. SISTEM ANTI DUPLIKASI GLOBAL (LINTAS GRUP) ---
-    const checkDupRes = await fetch(`${SUPABASE_URL}/rest/v1/receipts?amount=eq.${amount}&transaction_date=eq.${transactionDate}&select=id,group_id,status,description`, {
+    // --- CEK LAPIS 2: Cek Duplikasi Berdasarkan Nominal, Tanggal & Teks Nota ---
+    const checkDupRes = await fetch(`${SUPABASE_URL}/rest/v1/receipts?amount=eq.${amount}&transaction_date=eq.${transactionDate}&select=id,group_id,status,description,raw_text`, {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
@@ -150,23 +176,22 @@ Aturan Penting:
 
     if (existingRecords.length > 0) {
       if (isTransferProof) {
-        // Jika bukti transfer, tandai pending_review dan LAnJUTKAN simpan gambar & data
+        // Jika bukti transfer, tandai pending_review untuk konfirmasi admin
         recordStatus = 'pending_review';
         await replyToTelegram(`⚠️ Transaksi Rp ${amount.toLocaleString('id-ID')} sudah tercatat sebelumnya. Bukti transfer/QRIS ini dimasukkan ke antrean pemeriksaan Admin.`);
       } else {
-        // JIKA DUPLIKAT NOTA TOKO: TOLAK SEGERA DAN JANGAN UPLOAD KE STORAGE SUPABASE
+        // Jika nota toko biasa (difoto ulang / kembar)
         const recordedGroup = existingRecords[0].group_id || 'grup lain';
-        await replyToTelegram(`❌ Gagal dicatat: Nota duplikat terdeteksi! Nota tanggal ${transactionDate} nominal Rp ${amount.toLocaleString('id-ID')} ini sudah pernah dimasukkan (tercatat di: ${recordedGroup}).`);
+        await replyToTelegram(`❌ Gagal dicatat: Nota duplikat terdeteksi! Nota tanggal ${transactionDate} dengan nominal Rp ${amount.toLocaleString('id-ID')} ini sudah pernah dimasukkan (tercatat di: ${recordedGroup}).`);
         
         return res.status(200).json({ 
           success: false, 
-          message: `Nota duplikat ditolak tanpa di-upload ke Storage.` 
+          message: `Nota duplikat difoto ulang ditolak.` 
         });
       }
     }
 
-    // --- 5. UPLOAD KE SUPABASE STORAGE (HANYA DILAKUKAN JIKA LOLOS DUPLIKASI) ---
-    const fileName = `receipt_${Date.now()}.jpg`;
+    // --- 4. UPLOAD KE SUPABASE STORAGE (HANYA DILAKUKAN JIKA LOLOS VALIDASI) ---
     const uploadRes = await fetch(`${SUPABASE_URL}/storage/v1/object/receipts/${fileName}`, {
       method: 'POST',
       headers: {
@@ -174,17 +199,18 @@ Aturan Penting:
         'apikey': SUPABASE_ANON_KEY,
         'Content-Type': 'image/jpeg'
       },
-      body: imgBuffer
+      body: buffer
     });
 
     if (!uploadRes.ok) {
       const errText = await uploadRes.text();
-      throw new Error(`Upload Supabase Storage Gagal: ${errText}`);
+      // Jika error karena file sudah ada di storage, abaikan
+      if (!errText.includes('already exists')) {
+        throw new Error(`Upload Supabase Storage Gagal: ${errText}`);
+      }
     }
 
-    const imageUrl = `${SUPABASE_URL}/storage/v1/object/public/receipts/${fileName}`;
-
-    // 6. Simpan Hasil ke Database Supabase
+    // 5. Simpan Hasil ke Database Supabase
     const dbRes = await fetch(`${SUPABASE_URL}/rest/v1/receipts`, {
       method: 'POST',
       headers: {
@@ -195,7 +221,7 @@ Aturan Penting:
       },
       body: JSON.stringify({
         group_id: groupName,
-        image_url: imageUrl,
+        image_url: targetImageUrl,
         transaction_date: transactionDate,
         transaction_time: transactionTime,
         description: description,

@@ -3,105 +3,337 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Dashboard Nota Belanja Telegram</title>
+  <title>Sistem Administrasi Keuangan Yayasan</title>
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            gold: {
+              400: '#FACC15',
+              500: '#EAB308',
+              600: '#CA8A04',
+            }
+          }
+        }
+      }
+    }
+  </script>
 </head>
-<body class="bg-slate-50 min-h-screen text-slate-800">
+<body class="bg-black min-h-screen text-slate-100 selection:bg-gold-500 selection:text-black">
 
   <!-- Modal / Layar Masukkan PIN -->
-  <div id="pin-modal" class="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-    <div class="bg-white rounded-2xl shadow-xl max-w-md w-full p-8 text-center border border-slate-100">
-      <div class="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-full flex items-center justify-center mx-auto mb-4 text-xl font-bold">
+  <div id="pin-modal" class="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+    <div class="bg-slate-900 rounded-2xl shadow-2xl max-w-md w-full p-8 text-center border border-gold-500/30">
+      <div class="w-14 h-14 bg-gold-500/10 text-gold-400 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl border border-gold-500/20">
         🔒
       </div>
-      <h2 class="text-xl font-bold text-slate-900 mb-2">Akses Terbatas</h2>
-      <p class="text-sm text-slate-500 mb-6">Masukkan PIN Keuangan Yayasan untuk membuka *dashboard*.</p>
+      <h2 class="text-xl font-bold text-white mb-2">Akses Keamanan Yayasan</h2>
+      <p class="text-sm text-slate-400 mb-6">Masukkan PIN rahasia untuk membuka sistem administrasi.</p>
       
       <form onsubmit="handleLogin(event)" class="space-y-4">
         <input 
           type="password" 
           id="pin-input" 
-          placeholder="Masukkan PIN rahasia" 
+          placeholder="••••••" 
           maxlength="6"
           required
-          class="w-full px-4 py-3 text-center tracking-widest text-lg border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+          class="w-full px-4 py-3 text-center tracking-widest text-lg bg-black border border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-gold-500 focus:border-gold-500 text-white"
         >
-        <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 rounded-xl transition shadow-sm">
-          Buka Dashboard
+        <button type="submit" class="w-full bg-gold-500 hover:bg-gold-600 text-black font-bold py-3 rounded-xl transition shadow-lg shadow-gold-500/10">
+          Buka Sistem
         </button>
       </form>
-      <p id="pin-error" class="text-xs text-rose-500 mt-3 hidden">PIN salah, silakan coba lagi.</p>
+      <p id="pin-error" class="text-xs text-rose-400 mt-3 hidden">PIN salah, silakan coba lagi.</p>
     </div>
   </div>
 
-  <!-- Header -->
-  <header class="bg-white shadow-sm border-b border-slate-200 py-6 mb-8">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row justify-between items-center gap-4">
-      <div>
-        <h1 class="text-2xl font-bold text-slate-900 flex items-center gap-2">
-          📊 Dashboard Nota Belanja Telegram
-        </h1>
-        <p class="text-sm text-slate-500 mt-1">Memantau transaksi, anti-duplikasi, dan pemeriksaan dobel transaksi secara real-time</p>
+  <!-- Modal Bukti Nota / Transaksi -->
+  <div id="receipt-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-slate-900 rounded-2xl max-w-2xl w-full p-6 border border-slate-800 relative">
+      <div class="flex justify-between items-center mb-4">
+        <h3 class="text-lg font-bold text-gold-400">Bukti / Nota Transaksi</h3>
+        <button onclick="closeReceiptModal()" class="text-slate-400 hover:text-white text-xl font-bold">&times;</button>
       </div>
-      <div class="flex items-center gap-3">
-        <button onclick="lockDashboardManually()" class="bg-slate-200 hover:bg-slate-300 text-slate-700 px-3 py-2 rounded-lg text-sm font-medium transition">
-          🔒 Kunci
+      <div class="bg-black rounded-xl overflow-hidden flex items-center justify-center min-h-[300px] border border-slate-800">
+        <img id="modal-receipt-img" src="" alt="Bukti Nota" class="max-h-[70vh] object-contain">
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Form Input Manual Transaksi Kas Keluar -->
+  <div id="manual-tx-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-slate-900 rounded-2xl max-w-xl w-full p-6 border border-gold-500/30 max-h-[90vh] overflow-y-auto">
+      <div class="flex justify-between items-center mb-4">
+        <h3 class="text-lg font-bold text-gold-400">➕ Tambah Transaksi Kas Keluar (Manual)</h3>
+        <button onclick="closeManualModal()" class="text-slate-400 hover:text-white text-xl font-bold">&times;</button>
+      </div>
+      
+      <form onsubmit="handleManualSubmit(event)" class="space-y-4 text-sm">
+        <div>
+          <label class="block text-slate-400 mb-1">Sumber / Keterangan Referensi *</label>
+          <input type="text" id="m-source" required placeholder="Contoh: Kas Kasir / Petugas Yayasan" class="w-full bg-black border border-slate-700 rounded-lg p-2.5 text-white focus:ring-2 focus:ring-gold-500">
+        </div>
+        
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="block text-slate-400 mb-1">Tanggal Transaksi *</label>
+            <input type="date" id="m-date" required class="w-full bg-black border border-slate-700 rounded-lg p-2.5 text-white focus:ring-2 focus:ring-gold-500">
+          </div>
+          <div>
+            <label class="block text-slate-400 mb-1">Waktu (Opsional)</label>
+            <input type="time" id="m-time" class="w-full bg-black border border-slate-700 rounded-lg p-2.5 text-white focus:ring-2 focus:ring-gold-500">
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-slate-400 mb-1">Uraian / Nama Toko & Produk *</label>
+          <input type="text" id="m-desc" required placeholder="Contoh: Pembelian ATK Kantor" class="w-full bg-black border border-slate-700 rounded-lg p-2.5 text-white focus:ring-2 focus:ring-gold-500">
+        </div>
+
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="block text-slate-400 mb-1">Kategori *</label>
+            <select id="m-category" required class="w-full bg-black border border-slate-700 rounded-lg p-2.5 text-white focus:ring-2 focus:ring-gold-500">
+              <option value="">Pilih Kategori</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-slate-400 mb-1">Proyek / Kegiatan *</label>
+            <select id="m-project" required class="w-full bg-black border border-slate-700 rounded-lg p-2.5 text-white focus:ring-2 focus:ring-gold-500">
+              <option value="">Pilih Proyek</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-3 gap-3">
+          <div>
+            <label class="block text-slate-400 mb-1">Harga Satuan *</label>
+            <input type="number" id="m-price" required min="0" placeholder="0" class="w-full bg-black border border-slate-700 rounded-lg p-2.5 text-white focus:ring-2 focus:ring-gold-500">
+          </div>
+          <div>
+            <label class="block text-slate-400 mb-1">Banyak</label>
+            <input type="number" id="m-qty" value="1" min="1" class="w-full bg-black border border-slate-700 rounded-lg p-2.5 text-white focus:ring-2 focus:ring-gold-500">
+          </div>
+          <div>
+            <label class="block text-slate-400 mb-1">Satuan</label>
+            <input type="text" id="m-unit" value="Paket" class="w-full bg-black border border-slate-700 rounded-lg p-2.5 text-white focus:ring-2 focus:ring-gold-500">
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-slate-400 mb-1">Persentase (%)</label>
+          <input type="number" id="m-percentage" value="100" min="0" max="100" class="w-full bg-black border border-slate-700 rounded-lg p-2.5 text-white focus:ring-2 focus:ring-gold-500">
+        </div>
+
+        <div>
+          <label class="block text-slate-400 mb-1">Upload Bukti Nota / Foto *</label>
+          <input type="file" id="m-file" accept="image/*" required class="w-full text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-gold-500 file:text-black hover:file:bg-gold-600">
+        </div>
+
+        <div class="pt-4 flex gap-3">
+          <button type="button" onclick="closeManualModal()" class="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold py-2.5 rounded-xl transition">Batal</button>
+          <button type="submit" class="flex-1 bg-gold-500 hover:bg-gold-600 text-black font-bold py-2.5 rounded-xl transition">Simpan Transaksi</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Header & Navigasi Menu Utama -->
+  <header class="bg-slate-900 border-b border-slate-800 sticky top-0 z-40">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col md:flex-row justify-between items-center gap-4">
+      <div>
+        <h1 class="text-xl font-extrabold text-white flex items-center gap-2">
+          🏛️ <span class="text-gold-400">Keuangan Yayasan</span>
+        </h1>
+        <p id="active-period-badge" class="text-xs text-slate-400 mt-0.5">Periode Aktif: Memuat...</p>
+      </div>
+
+      <!-- Navigasi Tab Menu -->
+      <nav class="flex bg-black p-1.5 rounded-xl border border-slate-800 gap-1">
+        <button onclick="switchTab('dashboard')" id="nav-dashboard" class="px-4 py-2 rounded-lg text-xs font-semibold transition bg-gold-500 text-black">
+          📊 Dashboard
         </button>
-        <button onclick="fetchReceipts()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition shadow-sm">
-          🔄 Refresh Data
+        <button onclick="switchTab('transactions')" id="nav-transactions" class="px-4 py-2 rounded-lg text-xs font-semibold transition text-slate-400 hover:text-white">
+          📑 Transaksi
+        </button>
+        <button onclick="switchTab('settings')" id="nav-settings" class="px-4 py-2 rounded-lg text-xs font-semibold transition text-slate-400 hover:text-white">
+          ⚙️ Pengaturan
+        </button>
+      </nav>
+
+      <div class="flex items-center gap-3">
+        <button onclick="lockDashboardManually()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-2 rounded-lg text-xs font-medium transition border border-slate-700">
+          🔒 Kunci Sesi
+        </button>
+        <button onclick="fetchAllData()" class="bg-gold-500 hover:bg-gold-600 text-black px-3 py-2 rounded-lg text-xs font-bold transition">
+          🔄 Refresh
         </button>
       </div>
     </div>
   </header>
 
-  <!-- Main Content -->
-  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-12">
+  <!-- Konten Utama -->
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
     
-    <!-- Statistik Ringkas -->
-    <div class="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-8">
-      <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-        <p class="text-sm font-medium text-slate-500">Total Transaksi Verified</p>
-        <p id="stat-total" class="text-3xl font-bold text-indigo-600 mt-2">0</p>
+    <!-- TAB 1: DASHBOARD (SUMMARY) -->
+    <section id="tab-content-dashboard" class="space-y-6">
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-6">
+        <div class="bg-slate-900 p-6 rounded-2xl border border-slate-800">
+          <p class="text-xs font-medium text-slate-400 uppercase tracking-wider">Status Periode Aktif</p>
+          <p id="dash-period-name" class="text-xl font-bold text-gold-400 mt-2">-</p>
+          <p id="dash-period-dates" class="text-xs text-slate-500 mt-1">-</p>
+        </div>
+        <div class="bg-slate-900 p-6 rounded-2xl border border-slate-800">
+          <p class="text-xs font-medium text-slate-400 uppercase tracking-wider">Total Nominal (Periode Aktif)</p>
+          <p id="dash-total-amount" class="text-2xl font-black text-white mt-2">Rp 0</p>
+        </div>
+        <div class="bg-slate-900 p-6 rounded-2xl border border-slate-800">
+          <p class="text-xs font-medium text-slate-400 uppercase tracking-wider">Antrean Verifikasi (Pending)</p>
+          <p id="dash-pending-count" class="text-2xl font-black text-amber-400 mt-2">0</p>
+        </div>
       </div>
-      <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-        <p class="text-sm font-medium text-slate-500">Total Nominal Belanja</p>
-        <p id="stat-amount" class="text-3xl font-bold text-emerald-600 mt-2">Rp 0</p>
+      <div class="bg-slate-900 rounded-2xl p-6 border border-slate-800 text-center py-12">
+        <h3 class="text-lg font-bold text-white mb-2">Selamat Datang di Sistem Administrasi Keuangan</h3>
+        <p class="text-sm text-slate-400 max-w-lg mx-auto">Gunakan menu **Transaksi** di atas untuk melihat rekapitulasi lengkap Kolom A sampai Q, melakukan input manual, verifikasi, serta mengatur master data di menu **Pengaturan**.</p>
       </div>
-      <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-        <p class="text-sm font-medium text-slate-500">Antrean Pending Review</p>
-        <p id="stat-pending" class="text-3xl font-bold text-amber-600 mt-2">0</p>
-      </div>
-    </div>
+    </section>
 
-    <!-- Grid Daftar Nota -->
-    <div id="receipts-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-      <div class="col-span-full text-center py-12 text-slate-400">
-        Memuat data transaksi dari Supabase...
+    <!-- TAB 2: TRANSAKSI (TABEL A-Q) -->
+    <section id="tab-content-transactions" class="space-y-4 hidden">
+      <div class="flex flex-col sm:flex-row justify-between items-center gap-4">
+        <div>
+          <h2 class="text-lg font-bold text-white">Rekapitulasi Transaksi Keuangan</h2>
+          <p class="text-xs text-slate-400">Seluruh data transaksi Telegram dan Manual Web tercantum di bawah ini.</p>
+        </div>
+        <button onclick="openManualModal()" class="bg-gold-500 hover:bg-gold-600 text-black px-4 py-2.5 rounded-xl text-xs font-bold transition shadow-md">
+          + Transaksi (Kas Keluar)
+        </button>
       </div>
-    </div>
+
+      <!-- Wrapper Tabel Horizontal Scroll -->
+      <div class="bg-slate-900 rounded-2xl border border-slate-800 overflow-x-auto shadow-xl">
+        <table class="w-full text-left text-xs whitespace-nowrap">
+          <thead class="bg-slate-950 text-gold-400 uppercase font-bold border-b border-slate-800">
+            <tr>
+              <th class="p-3">Sumber</th>
+              <th class="p-3">No. Urut</th>
+              <th class="p-3">Tgl.</th>
+              <th class="p-3">Bln. / Thn.</th>
+              <th class="p-3">Waktu</th>
+              <th class="p-3">KM/KK</th>
+              <th class="p-3">No. Bukti</th>
+              <th class="p-3">Uraian</th>
+              <th class="p-3">Kategori</th>
+              <th class="p-3">Proyek / Kegiatan</th>
+              <th class="p-3">Harga Satuan</th>
+              <th class="p-3">Banyak</th>
+              <th class="p-3">Satuan</th>
+              <th class="p-3">%</th>
+              <th class="p-3">Jumlah</th>
+              <th class="p-3">+/-</th>
+              <th class="p-3">Saldo</th>
+              <th class="p-3 text-center">Aksi & Bukti</th>
+            </tr>
+          </thead>
+          <tbody id="transactions-table-body" class="divide-y divide-slate-800 text-slate-300">
+            <tr>
+              <td colspan="18" class="text-center py-12 text-slate-500">Memuat data transaksi...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- TAB 3: PENGATURAN (SETTINGS) -->
+    <section id="tab-content-settings" class="space-y-8 hidden">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        
+        <!-- Manajemen Periode Laporan -->
+        <div class="bg-slate-900 p-6 rounded-2xl border border-slate-800 space-y-4">
+          <h3 class="font-bold text-gold-400 text-base">📅 Manajemen Periode & Saldo Awal</h3>
+          <form onsubmit="handleSavePeriod(event)" class="space-y-3 text-xs">
+            <div>
+              <label class="block text-slate-400 mb-1">Nama Periode</label>
+              <input type="text" id="p-name" required placeholder="Contoh: Periode Agustus 2026" class="w-full bg-black border border-slate-700 rounded-lg p-2 text-white">
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="block text-slate-400 mb-1">Tanggal Mulai (26)</label>
+                <input type="date" id="p-start" required class="w-full bg-black border border-slate-700 rounded-lg p-2 text-white">
+              </div>
+              <div>
+                <label class="block text-slate-400 mb-1">Tanggal Selesai (25)</label>
+                <input type="date" id="p-end" required class="w-full bg-black border border-slate-700 rounded-lg p-2 text-white">
+              </div>
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="block text-slate-400 mb-1">Saldo Awal (Opsional)</label>
+                <input type="number" id="p-initial" placeholder="0" class="w-full bg-black border border-slate-700 rounded-lg p-2 text-white">
+              </div>
+              <div>
+                <label class="block text-slate-400 mb-1">Deposit (Opsional)</label>
+                <input type="number" id="p-deposit" placeholder="0" class="w-full bg-black border border-slate-700 rounded-lg p-2 text-white">
+              </div>
+            </div>
+            <div>
+              <label class="block text-slate-400 mb-1">Status Periode</label>
+              <select id="p-status" class="w-full bg-black border border-slate-700 rounded-lg p-2 text-white">
+                <option value="Active">Aktif</option>
+                <option value="Draft">Draft</option>
+                <option value="Closed">Ditutup (Kunci)</option>
+              </select>
+            </div>
+            <button type="submit" class="w-full bg-gold-500 hover:bg-gold-600 text-black font-bold py-2 rounded-lg transition">Simpan / Buat Periode</button>
+          </form>
+          <div id="periods-list" class="mt-4 space-y-2 text-xs"></div>
+        </div>
+
+        <!-- Master Kategori & Proyek -->
+        <div class="space-y-6">
+          <!-- Kategori -->
+          <div class="bg-slate-900 p-6 rounded-2xl border border-slate-800 space-y-4">
+            <h3 class="font-bold text-gold-400 text-base">📁 Master Kategori Transaksi</h3>
+            <form onsubmit="handleAddCategory(event)" class="flex gap-2 text-xs">
+              <input type="text" id="cat-input" required placeholder="Nama Kategori Baru" class="flex-1 bg-black border border-slate-700 rounded-lg p-2 text-white">
+              <button type="submit" class="bg-gold-500 text-black px-4 py-2 font-bold rounded-lg hover:bg-gold-600">Tambah</button>
+            </form>
+            <div id="categories-list" class="flex flex-wrap gap-2 pt-2"></div>
+          </div>
+
+          <!-- Proyek -->
+          <div class="bg-slate-900 p-6 rounded-2xl border border-slate-800 space-y-4">
+            <h3 class="font-bold text-gold-400 text-base">🏗️ Master Proyek / Kegiatan</h3>
+            <form onsubmit="handleAddProject(event)" class="flex gap-2 text-xs">
+              <input type="text" id="proj-input" required placeholder="Nama Proyek Baru" class="flex-1 bg-black border border-slate-700 rounded-lg p-2 text-white">
+              <button type="submit" class="bg-gold-500 text-black px-4 py-2 font-bold rounded-lg hover:bg-gold-600">Tambah</button>
+            </form>
+            <div id="projects-list" class="flex flex-wrap gap-2 pt-2"></div>
+          </div>
+        </div>
+
+      </div>
+    </section>
 
   </main>
 
-  <!-- Script Integrasi & Keamanan PIN -->
+  <!-- Script Logika Aplikasi & Integrasi Supabase -->
   <script>
-    // ⚙️ ATUR PIN RAHASIA ANDA DI SINI
-    const CORRECT_PIN = '123456'; // Silakan ubah sesuai keinginan Anda
-
-    // Konfigurasi Supabase
     const SUPABASE_URL = 'https://dnkvixelvwfzogthyrib.supabase.co'; 
     const SUPABASE_ANON_KEY = 'sb_publishable_jCyZKWI0IhBLxAlkFpV_yw_3CNkeZH1';
 
     let idleTimer;
     const IDLE_TIMEOUT_MS = 10 * 60 * 1000; // 10 Menit
 
-    // Cek status login saat halaman pertama kali dimuat
     window.addEventListener('DOMContentLoaded', () => {
       const isUnlocked = sessionStorage.getItem('dashboard_unlocked');
       if (isUnlocked === 'true') {
         document.getElementById('pin-modal').classList.add('hidden');
         resetIdleTimer();
-        fetchReceipts();
+        fetchAllData();
       }
     });
 
@@ -111,15 +343,11 @@
       const errorText = document.getElementById('pin-error');
 
       try {
-        // Kirim PIN ke API Vercel untuk diverifikasi di sisi server
         const response = await fetch('/api/verify-pin', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ pin: inputPin })
         });
-
         const result = await response.json();
 
         if (result.success) {
@@ -128,13 +356,12 @@
           errorText.classList.add('hidden');
           document.getElementById('pin-input').value = '';
           resetIdleTimer();
-          fetchReceipts();
+          fetchAllData();
         } else {
           errorText.classList.remove('hidden');
         }
       } catch (err) {
-        console.error(err);
-        errorText.innerText = 'Terjadi kesalahan koneksi ke server.';
+        errorText.innerText = 'Gagal menghubungi server.';
         errorText.classList.remove('hidden');
       }
     }
@@ -145,194 +372,303 @@
       clearTimeout(idleTimer);
     }
 
-    // Sistem Idle Timeout (10 Menit)
     function resetIdleTimer() {
       clearTimeout(idleTimer);
       idleTimer = setTimeout(() => {
         lockDashboardManually();
-        alert('Sesi Anda telah berakhir karena tidak ada aktivitas selama 10 menit. Silakan masukkan PIN kembali.');
+        alert('Sesi Anda berakhir karena tidak ada aktivitas selama 10 menit.');
       }, IDLE_TIMEOUT_MS);
     }
 
-    // Pantau aktivitas pengguna (klik, ketik, gerakan mouse)
     ['mousemove', 'keydown', 'click', 'scroll', 'touchstart'].forEach(event => {
       window.addEventListener(event, () => {
-        if (sessionStorage.getItem('dashboard_unlocked') === 'true') {
-          resetIdleTimer();
-        }
+        if (sessionStorage.getItem('dashboard_unlocked') === 'true') resetIdleTimer();
       });
     });
 
-    async function fetchReceipts() {
-      const container = document.getElementById('receipts-container');
-      container.innerHTML = `<div class="col-span-full text-center py-12 text-slate-400">Memuat ulang data...</div>`;
+    function switchTab(tabName) {
+      ['dashboard', 'transactions', 'settings'].forEach(t => {
+        document.getElementById(`tab-content-${t}`).classList.add('hidden');
+        document.getElementById(`nav-${t}`).className = "px-4 py-2 rounded-lg text-xs font-semibold transition text-slate-400 hover:text-white";
+      });
+      document.getElementById(`tab-content-${tabName}`).classList.remove('hidden');
+      document.getElementById(`nav-${tabName}`).className = "px-4 py-2 rounded-lg text-xs font-semibold transition bg-gold-500 text-black";
+    }
 
+    async function fetchAllData() {
+      await Promise.all([
+        fetchTransactions(),
+        fetchMasterData(),
+        fetchPeriods()
+      ]);
+    }
+
+    async function fetchMasterData() {
       try {
-        const res = await fetch(`${SUPABASE_URL}/rest/v1/receipts?select=*&order=id.desc`, {
-          headers: {
-            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-            'apikey': SUPABASE_ANON_KEY
-          }
-        });
+        const [catRes, projRes] = await Promise.all([
+          fetch(`${SUPABASE_URL}/rest/v1/categories?select=*`, { headers: { 'Authorization': `Bearer ${SUPABASE_ANON_KEY}`, 'apikey': SUPABASE_ANON_KEY } }),
+          fetch(`${SUPABASE_URL}/rest/v1/projects?select=*`, { headers: { 'Authorization': `Bearer ${SUPABASE_ANON_KEY}`, 'apikey': SUPABASE_ANON_KEY } })
+        ]);
+        const categories = await catRes.json();
+        const projects = await projRes.json();
 
-        if (!res.ok) throw new Error('Gagal mengambil data dari Supabase');
+        // Render Dropdown di Modal Manual
+        const catSelect = document.getElementById('m-category');
+        catSelect.innerHTML = '<option value="">Pilih Kategori</option>' + categories.map(c => `<option value="${c.name}">${c.name}</option>`).join('');
+        
+        const projSelect = document.getElementById('m-project');
+        projSelect.innerHTML = '<option value="">Pilih Proyek</option>' + projects.map(p => `<option value="${p.name}">${p.name}</option>`).join('');
 
-        const data = await res.json();
-        renderDashboard(data);
+        // Render List Pengaturan
+        document.getElementById('categories-list').innerHTML = categories.map(c => `<span class="bg-black border border-slate-700 px-2.5 py-1 rounded-lg text-slate-300 text-xs">${c.name}</span>`).join('');
+        document.getElementById('projects-list').innerHTML = projects.map(p => `<span class="bg-black border border-slate-700 px-2.5 py-1 rounded-lg text-slate-300 text-xs">${p.name}</span>`).join('');
       } catch (err) {
-        console.error(err);
-        container.innerHTML = `<div class="col-span-full text-center py-12 text-red-500">Gagal memuat data: ${err.message}</div>`;
+        console.error('Gagal memuat master data:', err);
       }
     }
 
-    function renderDashboard(receipts) {
-      const container = document.getElementById('receipts-container');
-      container.innerHTML = '';
+    async function fetchPeriods() {
+      try {
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/report_periods?select=*&order=id.desc`, {
+          headers: { 'Authorization': `Bearer ${SUPABASE_ANON_KEY}`, 'apikey': SUPABASE_ANON_KEY }
+        });
+        const periods = await res.json();
+        const active = periods.find(p => p.status === 'Active') || periods[0];
 
-      let totalVerifiedAmount = 0;
-      let totalVerifiedCount = 0;
+        if (active) {
+          document.getElementById('active-period-badge').innerText = `Periode Aktif: ${active.period_name} (${active.start_date} s.d. ${active.end_date})`;
+          document.getElementById('dash-period-name').innerText = active.period_name;
+          document.getElementById('dash-period-dates').innerText = `${active.start_date} s.d. ${active.end_date}`;
+        }
+
+        document.getElementById('periods-list').innerHTML = periods.map(p => `
+          <div class="flex justify-between items-center bg-black p-2.5 rounded-lg border border-slate-800">
+            <span>${p.period_name} (${p.status})</span>
+            <span class="text-gold-400">Awal: Rp ${(p.initial_balance||0).toLocaleString('id-ID')}</span>
+          </div>
+        `).join('');
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
+    async function fetchTransactions() {
+      const tbody = document.getElementById('transactions-table-body');
+      try {
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/transactions?select=*&order=id.asc`, {
+          headers: { 'Authorization': `Bearer ${SUPABASE_ANON_KEY}`, 'apikey': SUPABASE_ANON_KEY }
+        });
+        const data = await res.json();
+        renderTransactionsTable(data);
+      } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="18" class="text-center py-12 text-rose-400">Gagal memuat data transaksi.</td></tr>`;
+      }
+    }
+
+    function renderTransactionsTable(transactions) {
+      const tbody = document.getElementById('transactions-table-body');
+      tbody.innerHTML = '';
+
+      let totalVerifiedAmt = 0;
       let pendingCount = 0;
 
-      if (receipts.length === 0) {
-        container.innerHTML = `<div class="col-span-full text-center py-12 text-slate-400 bg-white rounded-xl border border-slate-200">Belum ada data transaksi yang tercatat.</div>`;
-        updateStats(0, 0, 0);
+      if (transactions.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="18" class="text-center py-12 text-slate-500">Belum ada data transaksi tercatat.</td></tr>`;
+        updateDashboardSummary(0, 0);
         return;
       }
 
-      receipts.forEach(item => {
-        const isPending = item.status === 'pending_review';
-        
-        if (isPending) {
-          pendingCount++;
-        } else {
-          totalVerifiedCount++;
-          totalVerifiedAmount += (item.amount || 0);
-        }
+      transactions.forEach((tx) => {
+        const isPending = tx.status === 'pending_review' || tx.status === 'suspect_double';
+        if (isPending) pendingCount++;
+        else totalVerifiedAmt += (tx.amount || 0);
 
-        const card = document.createElement('div');
-        card.className = `bg-white rounded-xl shadow-sm border overflow-hidden flex flex-col justify-between transition hover:shadow-md ${isPending ? 'border-amber-300 ring-2 ring-amber-100' : 'border-slate-200'}`;
+        const row = document.createElement('tr');
+        row.className = `border-b border-slate-800 hover:bg-slate-800/50 transition ${isPending ? 'bg-amber-950/20' : ''}`;
 
-        card.innerHTML = `
-          <div>
-            <!-- Gambar Nota -->
-            <div class="relative h-48 bg-slate-100 overflow-hidden border-b border-slate-100 group">
-              <img src="${item.image_url || 'https://via.placeholder.com/400x300?text=No+Image'}" alt="Nota" class="w-full h-full object-cover group-hover:scale-105 transition duration-300">
-              <div class="absolute top-3 right-3">
-                ${isPending 
-                  ? '<span class="bg-amber-500 text-white text-xs font-semibold px-2.5 py-1 rounded-full shadow">⚠️ Pending Review</span>' 
-                  : '<span class="bg-emerald-600 text-white text-xs font-semibold px-2.5 py-1 rounded-full shadow">✅ Verified</span>'
-                }
-              </div>
-            </div>
+        const methodBadge = tx.input_method === 'manual' 
+          ? '<span class="text-[10px] bg-gold-500/20 text-gold-400 px-1.5 py-0.5 rounded font-mono">Manual Web</span>' 
+          : '<span class="text-[10px] bg-indigo-500/20 text-indigo-400 px-1.5 py-0.5 rounded font-mono">Telegram</span>';
 
-            <!-- Detail Informasi -->
-            <div class="p-5">
-              <span class="text-xs font-medium text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-md inline-block mb-2">
-                📁 ${item.group_id || 'Grup Telegram'}
-              </span>
-              <h3 class="font-bold text-slate-900 text-lg mb-1 truncate" title="${item.description}">${item.description}</h3>
-              <p class="text-2xl font-extrabold text-slate-900 mb-3">Rp ${(item.amount || 0).toLocaleString('id-ID')}</p>
-              
-              <div class="flex items-center gap-4 text-xs text-slate-500 mb-4">
-                <span>📅 ${item.transaction_date || '-'}</span>
-                <span>⏰ ${item.transaction_time || '-'}</span>
-              </div>
-
-              <!-- Teks Mentah -->
-              <details class="group/dropdown text-xs bg-slate-50 rounded-lg p-2.5 border border-slate-200">
-                <summary class="cursor-pointer font-medium text-slate-600 select-none flex justify-between items-center">
-                  Lihat Teks Mentah DeepSeek
-                  <span class="group-open/dropdown:rotate-180 transition">▼</span>
-                </summary>
-                <p class="mt-2 text-slate-500 whitespace-pre-wrap font-mono text-[11px] max-h-28 overflow-y-auto">${item.raw_text || 'Tidak ada teks mentah'}</p>
-              </details>
-            </div>
-          </div>
-
-          <!-- Bagian Tombol Aksi Admin -->
-          ${isPending ? `
-            <div class="p-4 bg-amber-50 border-t border-amber-200 flex gap-2">
-              <button onclick="updateStatus(${item.id}, 'verified')" class="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold py-2 rounded-lg transition shadow-sm">
-                ✅ Setujui (Sah)
-              </button>
-              <button onclick="deleteRecord(${item.id}, '${item.image_url}')" class="flex-1 bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold py-2 rounded-lg transition shadow-sm">
-                ❌ Hapus (Dobel)
-              </button>
-            </div>
-          ` : `
-            <div class="px-5 py-3 bg-slate-50 border-t border-slate-100 flex justify-end">
-              <button onclick="deleteRecord(${item.id}, '${item.image_url}')" class="text-xs text-rose-500 hover:text-rose-700 font-medium transition">
-                Hapus Transaksi
-              </button>
-            </div>
-          `}
+        row.innerHTML = `
+          <td class="p-3 font-medium">${tx.source} ${methodBadge}</td>
+          <td class="p-3 text-center">${tx.sort_no || '-'}</td>
+          <td class="p-3">${tx.transaction_date || '-'}</td>
+          <td class="p-3">${tx.month_year || '-'}</td>
+          <td class="p-3">${tx.transaction_time || '-'}</td>
+          <td class="p-3 font-semibold ${tx.type === 'Kas Masuk' ? 'text-emerald-400' : 'text-slate-300'}">${tx.type}</td>
+          <td class="p-3 text-center">${tx.proof_no || '-'}</td>
+          <td class="p-3">${tx.description}</td>
+          <td class="p-3">${tx.category || '-'}</td>
+          <td class="p-3">${tx.project || '-'}</td>
+          <td class="p-3 text-right">Rp ${(tx.unit_price || 0).toLocaleString('id-ID')}</td>
+          <td class="p-3 text-center">${tx.quantity || 1}</td>
+          <td class="p-3">${tx.unit || 'Paket'}</td>
+          <td class="p-3 text-center">${tx.percentage || 100}%</td>
+          <td class="p-3 text-right font-semibold">Rp ${(tx.amount || 0).toLocaleString('id-ID')}</td>
+          <td class="p-3 text-right font-semibold ${tx.signed_amount < 0 ? 'text-rose-400' : 'text-emerald-400'}">
+            ${tx.signed_amount < 0 ? `(${Math.abs(tx.signed_amount).toLocaleString('id-ID')})` : tx.signed_amount.toLocaleString('id-ID')}
+          </td>
+          <td class="p-3 text-right font-bold text-gold-400">Rp ${(tx.running_balance || 0).toLocaleString('id-ID')}</td>
+          <td class="p-3 text-center space-x-2">
+            ${tx.image_url ? `<button onclick="showReceipt('${tx.image_url}')" class="text-xs bg-slate-800 hover:bg-slate-700 text-gold-400 px-2 py-1 rounded">Nota</button>` : ''}
+            ${isPending ? `
+              <button onclick="updateTxStatus(${tx.id}, 'verified')" class="text-xs bg-emerald-600 hover:bg-emerald-700 text-white px-2 py-1 rounded font-bold">Sah</button>
+              <button onclick="deleteTx(${tx.id})" class="text-xs bg-rose-600 hover:bg-rose-700 text-white px-2 py-1 rounded font-bold">Tolak</button>
+            ` : `
+              <button onclick="deleteTx(${tx.id})" class="text-xs text-rose-400 hover:text-rose-300">Hapus</button>
+            `}
+          </td>
         `;
-
-        container.appendChild(card);
+        tbody.appendChild(row);
       });
 
-      updateStats(totalVerifiedCount, totalVerifiedAmount, pendingCount);
+      updateDashboardSummary(totalVerifiedAmt, pendingCount);
     }
 
-    function updateStats(count, amount, pending) {
-      document.getElementById('stat-total').innerText = count;
-      document.getElementById('stat-amount').innerText = `Rp ${amount.toLocaleString('id-ID')}`;
-      document.getElementById('stat-pending').innerText = pending;
+    function updateDashboardSummary(totalAmount, pendingCnt) {
+      document.getElementById('dash-total-amount').innerText = `Rp ${totalAmount.toLocaleString('id-ID')}`;
+      document.getElementById('dash-pending-count').innerText = pendingCnt;
     }
 
-    async function updateStatus(id, newStatus) {
-      if (!confirm('Yakin ingin menyetujui transaksi ini sebagai sah?')) return;
+    function showReceipt(url) {
+      document.getElementById('modal-receipt-img').src = url;
+      document.getElementById('receipt-modal').classList.remove('hidden');
+    }
 
-      try {
-        const res = await fetch(`${SUPABASE_URL}/rest/v1/receipts?id=eq.${id}`, {
-          method: 'PATCH',
-          headers: {
-            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-            'apikey': SUPABASE_ANON_KEY,
-            'Content-Type': 'application/json',
-            'Prefer': 'return=minimal'
-          },
-          body: JSON.stringify({ status: newStatus })
-        });
+    function closeReceiptModal() {
+      document.getElementById('receipt-modal').classList.add('hidden');
+    }
 
-        if (!res.ok) throw new Error('Gagal memperbarui status');
-        fetchReceipts();
-      } catch (err) {
-        alert('Terjadi kesalahan: ' + err.message);
+    function openManualModal() {
+      document.getElementById('manual-tx-modal').classList.remove('hidden');
+    }
+
+    function closeManualModal() {
+      document.getElementById('manual-tx-modal').classList.add('hidden');
+    }
+
+    async function handleManualSubmit(e) {
+      e.preventDefault();
+      const fileInput = document.getElementById('m-file');
+      const file = fileInput.files[0];
+      if (!file) return alert('Harap upload bukti nota!');
+
+      const dateStr = document.getElementById('m-date').value;
+      const [year, month, day] = dateStr.split('-');
+      const monthYear = `${month}/${year}`;
+
+      const unitPrice = parseFloat(document.getElementById('m-price').value);
+      const qty = parseFloat(document.getElementById('m-qty').value) || 1;
+      const percentage = parseFloat(document.getElementById('m-percentage').value) || 100;
+      const amount = unitPrice * qty * (percentage / 100);
+
+      // Upload file ke Supabase Storage
+      const fileName = `manual_${Date.now()}_${file.name}`;
+      const uploadRes = await fetch(`${SUPABASE_URL}/storage/v1/object/receipts/${fileName}`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${SUPABASE_ANON_KEY}`, 'apikey': SUPABASE_ANON_KEY },
+        body: file
+      });
+
+      if (!uploadRes.ok) return alert('Gagal mengunggah foto nota.');
+      const imageUrl = `${SUPABASE_URL}/storage/v1/object/public/receipts/${fileName}`;
+
+      const newTx = {
+        source: document.getElementById('m-source').value,
+        transaction_date: dateStr,
+        month_year: monthYear,
+        transaction_time: document.getElementById('m-time').value || null,
+        type: 'Kas Keluar',
+        description: document.getElementById('m-desc').value,
+        category: document.getElementById('m-category').value,
+        project: document.getElementById('m-project').value,
+        unit_price: unitPrice,
+        quantity: qty,
+        unit: document.getElementById('m-unit').value,
+        percentage: percentage,
+        amount: amount,
+        signed_amount: -amount,
+        image_url: imageUrl,
+        input_method: 'manual',
+        status: 'verified'
+      };
+
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/transactions`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${SUPABASE_ANON_KEY}`, 'apikey': SUPABASE_ANON_KEY, 'Content-Type': 'application/json' },
+        body: JSON.stringify(newTx)
+      });
+
+      if (res.ok) {
+        closeManualModal();
+        e.target.reset();
+        fetchAllData();
+        alert('Transaksi manual berhasil disimpan!');
+      } else {
+        alert('Gagal menyimpan transaksi ke database.');
       }
     }
 
-    async function deleteRecord(id, imageUrl) {
-      if (!confirm('Yakin ingin menghapus data transaksi ini beserta file gambarnya dari sistem?')) return;
+    async function handleAddCategory(e) {
+      e.preventDefault();
+      const name = document.getElementById('cat-input').value;
+      await fetch(`${SUPABASE_URL}/rest/v1/categories`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${SUPABASE_ANON_KEY}`, 'apikey': SUPABASE_ANON_KEY, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name })
+      });
+      document.getElementById('cat-input').value = '';
+      fetchMasterData();
+    }
 
-      try {
-        if (imageUrl) {
-          const fileName = imageUrl.split('/receipts/')[1];
-          if (fileName) {
-            await fetch(`${SUPABASE_URL}/storage/v1/object/receipts/${fileName}`, {
-              method: 'DELETE',
-              headers: {
-                'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-                'apikey': SUPABASE_ANON_KEY
-              }
-            });
-          }
-        }
+    async function handleAddProject(e) {
+      e.preventDefault();
+      const name = document.getElementById('proj-input').value;
+      await fetch(`${SUPABASE_URL}/rest/v1/projects`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${SUPABASE_ANON_KEY}`, 'apikey': SUPABASE_ANON_KEY, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name })
+      });
+      document.getElementById('proj-input').value = '';
+      fetchMasterData();
+    }
 
-        const res = await fetch(`${SUPABASE_URL}/rest/v1/receipts?id=eq.${id}`, {
-          method: 'DELETE',
-          headers: {
-            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-            'apikey': SUPABASE_ANON_KEY
-          }
-        });
+    async function handleSavePeriod(e) {
+      e.preventDefault();
+      const period = {
+        period_name: document.getElementById('p-name').value,
+        start_date: document.getElementById('p-start').value,
+        end_date: document.getElementById('p-end').value,
+        initial_balance: parseFloat(document.getElementById('p-initial').value) || 0,
+        deposit: parseFloat(document.getElementById('p-deposit').value) || 0,
+        status: document.getElementById('p-status').value
+      };
+      await fetch(`${SUPABASE_URL}/rest/v1/report_periods`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${SUPABASE_ANON_KEY}`, 'apikey': SUPABASE_ANON_KEY, 'Content-Type': 'application/json' },
+        body: JSON.stringify(period)
+      });
+      fetchPeriods();
+      alert('Periode laporan berhasil disimpan!');
+    }
 
-        if (!res.ok) throw new Error('Gagal menghapus data dari database');
-        
-        fetchReceipts();
-      } catch (err) {
-        alert('Terjadi kesalahan: ' + err.message);
-      }
+    async function updateTxStatus(id, status) {
+      await fetch(`${SUPABASE_URL}/rest/v1/transactions?id=eq.${id}`, {
+        method: 'PATCH',
+        headers: { 'Authorization': `Bearer ${SUPABASE_ANON_KEY}`, 'apikey': SUPABASE_ANON_KEY, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status })
+      });
+      fetchTransactions();
+    }
+
+    async function deleteTx(id) {
+      if (!confirm('Yakin ingin menghapus transaksi ini?')) return;
+      await fetch(`${SUPABASE_URL}/rest/v1/transactions?id=eq.${id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${SUPABASE_ANON_KEY}`, 'apikey': SUPABASE_ANON_KEY }
+      });
+      fetchTransactions();
     }
   </script>
 </body>

@@ -20,7 +20,7 @@ export default async function handler(req, res) {
     const messageId = message.message_id;
     const groupName = message.chat.title || `Grup ${chatId}`;
     
-    // Fungsi helper untuk mengirim balasan langsung ke Telegram
+    // Helper balasan pesan Telegram
     const replyToTelegram = async (text) => {
       await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
         method: 'POST',
@@ -152,8 +152,9 @@ Aturan Penting:
       transactionDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
     }
 
-    // --- 5. SISTEM ANTI DUPLIKASI & CROSS-CHECK SUPABASE ---
-    const checkDupRes = await fetch(`${SUPABASE_URL}/rest/v1/receipts?amount=eq.${amount}&transaction_date=eq.${transactionDate}&select=id,status`, {
+    // --- 5. SISTEM ANTI DUPLIKASI GLOBAL (LINTAS GRUP) ---
+    // Cari transaksi di seluruh database Supabase yang memiliki nominal dan tanggal sama persis (TIDAK memfilter group_id)
+    const checkDupRes = await fetch(`${SUPABASE_URL}/rest/v1/receipts?amount=eq.${amount}&transaction_date=eq.${transactionDate}&select=id,group_id,status,description`, {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
@@ -170,17 +171,22 @@ Aturan Penting:
 
     if (existingRecords.length > 0) {
       if (isTransferProof) {
-        // Jika ini bukti transfer dan sudah ada transaksi serupa, tandai pending review
+        // Jika ini bukti transfer dan sudah ada transaksi di tanggal/nominal yang sama (dari grup manapun), tandai pending review
         recordStatus = 'pending_review';
-        await replyToTelegram('⚠️ Nota/transaksi ini sudah tercatat sebelumnya. Bukti transfer/QRIS ini masuk ke antrean pemeriksaan Admin.');
+        await replyToTelegram(`⚠️ Nota/transaksi sebesar Rp ${amount.toLocaleString('id-ID')} sudah tercatat sebelumnya. Bukti transfer/QRIS ini dimasukkan ke antrean pemeriksaan Admin.`);
       } else {
-        // Jika nota duplikat / foto ulang identik, tolak dan beri tahu di Telegram
-        await replyToTelegram('❌ Gagal dicatat: Nota duplikat atau foto ulang terdeteksi. Nota ini sudah pernah dimasukkan ke pencatatan.');
-        return res.status(200).json({ success: false, message: 'Nota duplikat ditolak.' });
+        // Jika nota toko/asli dan sudah tercatat di database (baik dari grup yang sama maupun grup lain)
+        const recordedGroup = existingRecords[0].group_id || 'grup lain';
+        await replyToTelegram(`❌ Gagal dicatat: Nota duplikat terdeteksi! Nota dengan tanggal ${transactionDate} dan nominal Rp ${amount.toLocaleString('id-ID')} ini sudah pernah dimasukkan (tercatat di: ${recordedGroup}).`);
+        
+        return res.status(200).json({ 
+          success: false, 
+          message: `Nota duplikat lintas grup ditolak (sudah ada di ${recordedGroup}).` 
+        });
       }
     }
 
-    // 6. Simpan Hasil ke Database Supabase
+    // 6. Simpan Hasil ke Database Supabase jika Lolos Validasi
     const dbRes = await fetch(`${SUPABASE_URL}/rest/v1/receipts`, {
       method: 'POST',
       headers: {
@@ -206,9 +212,9 @@ Aturan Penting:
       throw new Error(`Simpan DB Supabase Gagal: ${dbErr}`);
     }
 
-    // Jika berhasil tersimpan normal (bukan pending review)
+    // Balasan jika berhasil dicatat normal
     if (recordStatus === 'verified') {
-      await replyToTelegram(`✅ Berhasil dicatat!\nToko: ${description}\nNominal: Rp ${amount.toLocaleString('id-ID')}`);
+      await replyToTelegram(`✅ Berhasil dicatat!\nToko: ${description}\nNominal: Rp ${amount.toLocaleString('id-ID')}\nTanggal: ${transactionDate}`);
     }
 
     return res.status(200).json({ success: true, message: 'Diproses dengan sukses!' });

@@ -46,32 +46,12 @@ export default async function handler(req, res) {
     const filePath = tgFileData.result.file_path;
     const telegramImageUrl = `https://api.telegram.org/file/bot${TELEGRAM_BOT_TOKEN}/${filePath}`;
 
-    // 2. Unduh Gambar
+    // 2. Unduh Gambar ke Memori (Buffer Sementara) - BELUM UPLOAD KE STORAGE
     const imgFetch = await fetch(telegramImageUrl);
     const imgBuffer = await imgFetch.arrayBuffer();
-
-    // 3. Upload Gambar ke Supabase Storage
-    const fileName = `receipt_${Date.now()}.jpg`;
-    const uploadRes = await fetch(`${SUPABASE_URL}/storage/v1/object/receipts/${fileName}`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-        'apikey': SUPABASE_ANON_KEY,
-        'Content-Type': 'image/jpeg'
-      },
-      body: imgBuffer
-    });
-
-    if (!uploadRes.ok) {
-      const errText = await uploadRes.text();
-      throw new Error(`Upload Supabase Storage Gagal: ${errText}`);
-    }
-
-    const imageUrl = `${SUPABASE_URL}/storage/v1/object/public/receipts/${fileName}`;
-
-    // 4. Analisis Gambar Menggunakan DeepSeek API
     const base64Image = Buffer.from(imgBuffer).toString('base64');
-    
+
+    // 3. Analisis Gambar Menggunakan DeepSeek API
     const promptText = `Analisis foto bukti transaksi ini (bisa berupa nota cetak, nota tulis tangan, atau screenshot bukti transfer/QRIS/m-banking).
 Ekstrak data berikut dan kembalikan HANYA format JSON valid tanpa markdown/codeblock:
 {
@@ -152,8 +132,7 @@ Aturan Penting:
       transactionDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
     }
 
-    // --- 5. SISTEM ANTI DUPLIKASI GLOBAL (LINTAS GRUP) ---
-    // Cari transaksi di seluruh database Supabase yang memiliki nominal dan tanggal sama persis (TIDAK memfilter group_id)
+    // --- 4. SISTEM ANTI DUPLIKASI GLOBAL (LINTAS GRUP) ---
     const checkDupRes = await fetch(`${SUPABASE_URL}/rest/v1/receipts?amount=eq.${amount}&transaction_date=eq.${transactionDate}&select=id,group_id,status,description`, {
       method: 'GET',
       headers: {
@@ -171,22 +150,41 @@ Aturan Penting:
 
     if (existingRecords.length > 0) {
       if (isTransferProof) {
-        // Jika ini bukti transfer dan sudah ada transaksi di tanggal/nominal yang sama (dari grup manapun), tandai pending review
+        // Jika bukti transfer, tandai pending_review dan LAnJUTKAN simpan gambar & data
         recordStatus = 'pending_review';
-        await replyToTelegram(`⚠️ Nota/transaksi sebesar Rp ${amount.toLocaleString('id-ID')} sudah tercatat sebelumnya. Bukti transfer/QRIS ini dimasukkan ke antrean pemeriksaan Admin.`);
+        await replyToTelegram(`⚠️ Transaksi Rp ${amount.toLocaleString('id-ID')} sudah tercatat sebelumnya. Bukti transfer/QRIS ini dimasukkan ke antrean pemeriksaan Admin.`);
       } else {
-        // Jika nota toko/asli dan sudah tercatat di database (baik dari grup yang sama maupun grup lain)
+        // JIKA DUPLIKAT NOTA TOKO: TOLAK SEGERA DAN JANGAN UPLOAD KE STORAGE SUPABASE
         const recordedGroup = existingRecords[0].group_id || 'grup lain';
-        await replyToTelegram(`❌ Gagal dicatat: Nota duplikat terdeteksi! Nota dengan tanggal ${transactionDate} dan nominal Rp ${amount.toLocaleString('id-ID')} ini sudah pernah dimasukkan (tercatat di: ${recordedGroup}).`);
+        await replyToTelegram(`❌ Gagal dicatat: Nota duplikat terdeteksi! Nota tanggal ${transactionDate} nominal Rp ${amount.toLocaleString('id-ID')} ini sudah pernah dimasukkan (tercatat di: ${recordedGroup}).`);
         
         return res.status(200).json({ 
           success: false, 
-          message: `Nota duplikat lintas grup ditolak (sudah ada di ${recordedGroup}).` 
+          message: `Nota duplikat ditolak tanpa di-upload ke Storage.` 
         });
       }
     }
 
-    // 6. Simpan Hasil ke Database Supabase jika Lolos Validasi
+    // --- 5. UPLOAD KE SUPABASE STORAGE (HANYA DILAKUKAN JIKA LOLOS DUPLIKASI) ---
+    const fileName = `receipt_${Date.now()}.jpg`;
+    const uploadRes = await fetch(`${SUPABASE_URL}/storage/v1/object/receipts/${fileName}`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        'apikey': SUPABASE_ANON_KEY,
+        'Content-Type': 'image/jpeg'
+      },
+      body: imgBuffer
+    });
+
+    if (!uploadRes.ok) {
+      const errText = await uploadRes.text();
+      throw new Error(`Upload Supabase Storage Gagal: ${errText}`);
+    }
+
+    const imageUrl = `${SUPABASE_URL}/storage/v1/object/public/receipts/${fileName}`;
+
+    // 6. Simpan Hasil ke Database Supabase
     const dbRes = await fetch(`${SUPABASE_URL}/rest/v1/receipts`, {
       method: 'POST',
       headers: {

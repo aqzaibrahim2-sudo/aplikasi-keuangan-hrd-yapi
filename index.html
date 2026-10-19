@@ -6,10 +6,55 @@
   <title>Dashboard Nota Belanja Telegram</title>
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-50 min-h-screen text-slate-800">
+
+  <!-- Header -->
+  <header class="bg-white shadow-sm border-b border-slate-200 py-6 mb-8">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row justify-between items-center gap-4">
+      <div>
+        <h1 class="text-2xl font-bold text-slate-900 flex items-center gap-2">
+          📊 Dashboard Nota Belanja Telegram
+        </h1>
+        <p class="text-sm text-slate-500 mt-1">Memantau transaksi, anti-duplikasi, dan pemeriksaan dobel transaksi secara real-time</p>
+      </div>
+      <button onclick="fetchReceipts()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition shadow-sm">
+        🔄 Refresh Data
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-12">
+    
+    <!-- Statistik Ringkas -->
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-8">
+      <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+        <p class="text-sm font-medium text-slate-500">Total Transaksi Verified</p>
+        <p id="stat-total" class="text-3xl font-bold text-indigo-600 mt-2">0</p>
+      </div>
+      <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+        <p class="text-sm font-medium text-slate-500">Total Nominal Belanja</p>
+        <p id="stat-amount" class="text-3xl font-bold text-emerald-600 mt-2">Rp 0</p>
+      </div>
+      <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+        <p class="text-sm font-medium text-slate-500">Antrean Pending Review</p>
+        <p id="stat-pending" class="text-3xl font-bold text-amber-600 mt-2">0</p>
+      </div>
+    </div>
+
+    <!-- Grid Daftar Nota -->
+    <div id="receipts-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div class="col-span-full text-center py-12 text-slate-400">
+        Memuat data transaksi dari Supabase...
+      </div>
+    </div>
+
+  </main>
 
   <!-- Script Integrasi Supabase Client-Side -->
   <script>
-    // Masukkan kredensial Supabase Anda di sini
+    // Masukkan URL dan Anon Key Supabase Anda di sini
     const SUPABASE_URL = 'https://dnkvixelvwfzogthyrib.supabase.co'; 
     const SUPABASE_ANON_KEY = 'sb_publishable_jCyZKWI0IhBLxAlkFpV_yw_3CNkeZH1';
 
@@ -105,13 +150,13 @@
               <button onclick="updateStatus(${item.id}, 'verified')" class="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold py-2 rounded-lg transition shadow-sm">
                 ✅ Setujui (Sah)
               </button>
-              <button onclick="deleteRecord(${item.id})" class="flex-1 bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold py-2 rounded-lg transition shadow-sm">
+              <button onclick="deleteRecord(${item.id}, '${item.image_url}')" class="flex-1 bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold py-2 rounded-lg transition shadow-sm">
                 ❌ Hapus (Dobel)
               </button>
             </div>
           ` : `
             <div class="px-5 py-3 bg-slate-50 border-t border-slate-100 flex justify-end">
-              <button onclick="deleteRecord(${item.id})" class="text-xs text-rose-500 hover:text-rose-700 font-medium transition">
+              <button onclick="deleteRecord(${item.id}, '${item.image_url}')" class="text-xs text-rose-500 hover:text-rose-700 font-medium transition">
                 Hapus Transaksi
               </button>
             </div>
@@ -152,225 +197,26 @@
       }
     }
 
-    async function deleteRecord(id) {
-      if (!confirm('Yakin ingin menghapus data transaksi ini dari sistem?')) return;
+    // Fungsi Hapus Data + File Fisik di Storage Supabase
+    async function deleteRecord(id, imageUrl) {
+      if (!confirm('Yakin ingin menghapus data transaksi ini beserta file gambarnya dari sistem?')) return;
 
       try {
-        const res = await fetch(`${SUPABASE_URL}/rest/v1/receipts?id=eq.${id}`, {
-          method: 'DELETE',
-          headers: {
-            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-            'apikey': SUPABASE_ANON_KEY
-          }
-        });
+        // 1. Hapus file fisik dari Supabase Storage jika URL-nya ada
+        if (imageUrl) {
+          const pathParts = imageUrl.split('/');
+          const fileName = pathParts[pathParts.length - 1];
 
-        if (!res.ok) throw new Error('Gagal menghapus data');
-        fetchReceipts();
-      } catch (err) {
-        alert('Terjadi kesalahan: ' + err.message);
-      }
-    }
-
-    fetchReceipts();
-  </script>
-
-
-  
-</head>
-<body class="bg-slate-50 min-h-screen text-slate-800">
-
-  <!-- Header -->
-  <header class="bg-white shadow-sm border-b border-slate-200 py-6 mb-8">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row justify-between items-center gap-4">
-      <div>
-        <h1 class="text-2xl font-bold text-slate-900 flex items-center gap-2">
-          📊 Dashboard Nota Belanja Telegram
-        </h1>
-        <p class="text-sm text-slate-500 mt-1">Memantau transaksi, anti-duplikasi, dan pemeriksaan dobel transaksi secara real-time</p>
-      </div>
-      <button onclick="fetchReceipts()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition shadow-sm">
-        🔄 Refresh Data
-      </button>
-    </div>
-  </header>
-
-  <!-- Main Content -->
-  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-12">
-    
-    <!-- Statistik Ringkas -->
-    <div class="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-8">
-      <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-        <p class="text-sm font-medium text-slate-500">Total Transaksi Verified</p>
-        <p id="stat-total" class="text-3xl font-bold text-indigo-600 mt-2">0</p>
-      </div>
-      <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-        <p class="text-sm font-medium text-slate-500">Total Nominal Belanja</p>
-        <p id="stat-amount" class="text-3xl font-bold text-emerald-600 mt-2">Rp 0</p>
-      </div>
-      <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-        <p class="text-sm font-medium text-slate-500">Antrean Pending Review</p>
-        <p id="stat-pending" class="text-3xl font-bold text-amber-600 mt-2">0</p>
-      </div>
-    </div>
-
-    <!-- Grid Daftar Nota -->
-    <div id="receipts-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-      <div class="col-span-full text-center py-12 text-slate-400">
-        Memuat data transaksi dari Supabase...
-      </div>
-    </div>
-
-  </main>
-
-  <!-- Script Integrasi Supabase Client-Side -->
-  <script>
-    // Memakai variabel Supabase yang ada di environment/proyek Anda
-    const SUPABASE_URL = process?.env?.SUPABASE_URL || ''; 
-    const SUPABASE_ANON_KEY = process?.env?.SUPABASE_ANON_KEY || '';
-
-    async function fetchReceipts() {
-      const container = document.getElementById('receipts-container');
-      container.innerHTML = `<div class="col-span-full text-center py-12 text-slate-400">Memuat ulang data...</div>`;
-
-      try {
-        const res = await fetch(`${SUPABASE_URL}/rest/v1/receipts?select=*&order=id.desc`, {
-          headers: {
-            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-            'apikey': SUPABASE_ANON_KEY
-          }
-        });
-
-        if (!res.ok) throw new Error('Gagal mengambil data dari Supabase');
-
-        const data = await res.json();
-        renderDashboard(data);
-      } catch (err) {
-        console.error(err);
-        container.innerHTML = `<div class="col-span-full text-center py-12 text-red-500">Gagal memuat data: ${err.message}</div>`;
-      }
-    }
-
-    function renderDashboard(receipts) {
-      const container = document.getElementById('receipts-container');
-      container.innerHTML = '';
-
-      let totalVerifiedAmount = 0;
-      let totalVerifiedCount = 0;
-      let pendingCount = 0;
-
-      if (receipts.length === 0) {
-        container.innerHTML = `<div class="col-span-full text-center py-12 text-slate-400 bg-white rounded-xl border border-slate-200">Belum ada data transaksi yang tercatat.</div>`;
-        updateStats(0, 0, 0);
-        return;
-      }
-
-      receipts.forEach(item => {
-        const isPending = item.status === 'pending_review';
-        
-        if (isPending) {
-          pendingCount++;
-        } else {
-          totalVerifiedCount++;
-          totalVerifiedAmount += (item.amount || 0);
+          await fetch(`${SUPABASE_URL}/storage/v1/object/receipts/${fileName}`, {
+            method: 'DELETE',
+            headers: {
+              'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+              'apikey': SUPABASE_ANON_KEY
+            }
+          });
         }
 
-        const card = document.createElement('div');
-        card.className = `bg-white rounded-xl shadow-sm border overflow-hidden flex flex-col justify-between transition hover:shadow-md ${isPending ? 'border-amber-300 ring-2 ring-amber-100' : 'border-slate-200'}`;
-
-        card.innerHTML = `
-          <div>
-            <!-- Gambar Nota -->
-            <div class="relative h-48 bg-slate-100 overflow-hidden border-b border-slate-100 group">
-              <img src="${item.image_url || 'https://via.placeholder.com/400x300?text=No+Image'}" alt="Nota" class="w-full h-full object-cover group-hover:scale-105 transition duration-300">
-              <div class="absolute top-3 right-3">
-                ${isPending 
-                  ? '<span class="bg-amber-500 text-white text-xs font-semibold px-2.5 py-1 rounded-full shadow">⚠️ Pending Review</span>' 
-                  : '<span class="bg-emerald-600 text-white text-xs font-semibold px-2.5 py-1 rounded-full shadow">✅ Verified</span>'
-                }
-              </div>
-            </div>
-
-            <!-- Detail Informasi -->
-            <div class="p-5">
-              <span class="text-xs font-medium text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-md inline-block mb-2">
-                📁 ${item.group_id || 'Grup Telegram'}
-              </span>
-              <h3 class="font-bold text-slate-900 text-lg mb-1 truncate" title="${item.description}">${item.description}</h3>
-              <p class="text-2xl font-extrabold text-slate-900 mb-3">Rp ${(item.amount || 0).toLocaleString('id-ID')}</p>
-              
-              <div class="flex items-center gap-4 text-xs text-slate-500 mb-4">
-                <span>📅 ${item.transaction_date || '-'}</span>
-                <span>⏰ ${item.transaction_time || '-'}</span>
-              </div>
-
-              <!-- Teks Mentah -->
-              <details class="group/dropdown text-xs bg-slate-50 rounded-lg p-2.5 border border-slate-200">
-                <summary class="cursor-pointer font-medium text-slate-600 select-none flex justify-between items-center">
-                  Lihat Teks Mentah DeepSeek
-                  <span class="group-open/dropdown:rotate-180 transition">▼</span>
-                </summary>
-                <p class="mt-2 text-slate-500 whitespace-pre-wrap font-mono text-[11px] max-h-28 overflow-y-auto">${item.raw_text || 'Tidak ada teks mentah'}</p>
-              </details>
-            </div>
-          </div>
-
-          <!-- Bagian Tombol Aksi Admin -->
-          ${isPending ? `
-            <div class="p-4 bg-amber-50 border-t border-amber-200 flex gap-2">
-              <button onclick="updateStatus(${item.id}, 'verified')" class="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold py-2 rounded-lg transition shadow-sm">
-                ✅ Setujui (Sah)
-              </button>
-              <button onclick="deleteRecord(${item.id})" class="flex-1 bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold py-2 rounded-lg transition shadow-sm">
-                ❌ Hapus (Dobel)
-              </button>
-            </div>
-          ` : `
-            <div class="px-5 py-3 bg-slate-50 border-t border-slate-100 flex justify-end">
-              <button onclick="deleteRecord(${item.id})" class="text-xs text-rose-500 hover:text-rose-700 font-medium transition">
-                Hapus Transaksi
-              </button>
-            </div>
-          `}
-        `;
-
-        container.appendChild(card);
-      });
-
-      updateStats(totalVerifiedCount, totalVerifiedAmount, pendingCount);
-    }
-
-    function updateStats(count, amount, pending) {
-      document.getElementById('stat-total').innerText = count;
-      document.getElementById('stat-amount').innerText = `Rp ${amount.toLocaleString('id-ID')}`;
-      document.getElementById('stat-pending').innerText = pending;
-    }
-
-    async function updateStatus(id, newStatus) {
-      if (!confirm('Yakin ingin menyetujui transaksi ini sebagai sah?')) return;
-
-      try {
-        const res = await fetch(`${SUPABASE_URL}/rest/v1/receipts?id=eq.${id}`, {
-          method: 'PATCH',
-          headers: {
-            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-            'apikey': SUPABASE_ANON_KEY,
-            'Content-Type': 'application/json',
-            'Prefer': 'return=minimal'
-          },
-          body: JSON.stringify({ status: newStatus })
-        });
-
-        if (!res.ok) throw new Error('Gagal memperbarui status');
-        fetchReceipts();
-      } catch (err) {
-        alert('Terjadi kesalahan: ' + err.message);
-      }
-    }
-
-    async function deleteRecord(id) {
-      if (!confirm('Yakin ingin menghapus data transaksi ini dari sistem?')) return;
-
-      try {
+        // 2. Hapus baris data dari tabel database Supabase
         const res = await fetch(`${SUPABASE_URL}/rest/v1/receipts?id=eq.${id}`, {
           method: 'DELETE',
           headers: {
@@ -379,7 +225,8 @@
           }
         });
 
-        if (!res.ok) throw new Error('Gagal menghapus data');
+        if (!res.ok) throw new Error('Gagal menghapus data dari database');
+        
         fetchReceipts();
       } catch (err) {
         alert('Terjadi kesalahan: ' + err.message);

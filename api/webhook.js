@@ -1,8 +1,9 @@
 import { createClient } from '@supabase/supabase-js';
 
+// Menggunakan Environment Variables Vercel
 const supabase = createClient(
   process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY // Gunakan Service Role Key untuk akses backend Telegram
+  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY
 );
 
 export default async function handler(req, res) {
@@ -12,47 +13,51 @@ export default async function handler(req, res) {
 
   const update = req.body;
 
-  // Cek jika ada pesan berupa foto
-  if (update.message && update.message.photo) {
-    const chatId = update.message.chat.id;
-    const groupTitle = update.message.chat.title || update.message.from.first_name || 'Grup Telegram';
-    const photos = update.message.photo;
-    const fileId = photos[photos.length - 1].file_id; // Ambil foto resolusi tertinggi
+  try {
+    // 1. Cek apakah ada pesan bergambar (Foto Nota) dari Telegram
+    if (update && update.message && update.message.photo) {
+      const chatId = update.message.chat.id;
+      const groupTitle = update.message.chat.title || update.message.from.first_name || 'Grup Telegram';
+      const photos = update.message.photo;
+      const fileId = photos[photos.length - 1].file_id; // Foto resolusi tertinggi
 
-    try {
-      // 1. Dapatkan URL File Foto dari Telegram Bot API
+      // 2. Ambil URL file dari Telegram Bot API
       const fileRes = await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/getFile?file_id=${fileId}`);
       const fileData = await fileRes.json();
+
+      if (!fileData.ok) {
+        throw new Error('Gagal mengambil file dari Telegram API');
+      }
+
       const filePath = fileData.result.file_path;
       const imageUrl = `https://api.telegram.org/file/bot${process.env.TELEGRAM_BOT_TOKEN}/${filePath}`;
 
-      // 2. Jalankan OCR (pembacaan teks nota via OCR API / Vision Service)
-      // (Contoh mock data hasil OCR, sesuaikan dengan OCR engine yang Anda gunakan)
-      const ocrResult = await processOCR(imageUrl); 
-      
-      const txDateStr = ocrResult.date || new Date().toISOString().split('T')[0]; // Format: YYYY-MM-DD
-      const txAmount = ocrResult.totalAmount || 0;
-      const txDescription = ocrResult.merchantName ? `${ocrResult.merchantName} - ${ocrResult.items}` : 'Pembelian Nota Telegram';
-      const txTime = ocrResult.time || null;
+      // 3. Eksekusi OCR (Gunakan fungsi OCR bawaan/lama yang terbukti jalan)
+      const ocrResult = await processOCR(imageUrl);
 
-      // Format Bulan / Tahun (MM/YYYY)
-      const [year, month] = txDateStr.split('-');
-      const monthYear = `${month}/${year}`;
+      const txDateStr = ocrResult.date || new Date().toISOString().split('T')[0];
+      const txAmount = parseFloat(ocrResult.totalAmount || ocrResult.amount || 0);
+      const txDescription = ocrResult.merchantName 
+        ? `${ocrResult.merchantName} - ${ocrResult.items || 'Nota Telegram'}` 
+        : (ocrResult.description || 'Nota Pembelian Telegram');
+      const txTime = ocrResult.time || new Date().toTimeString().split(' ')[0];
 
-      // 3. Logika Validasi Backdate (Pengecekan Selisih Bulan)
+      // Format MM/YYYY
+      const dateParts = txDateStr.split('-');
+      const monthYear = dateParts.length === 3 ? `${dateParts[1]}/${dateParts[0]}` : '-';
+
+      // 4. Logika Validasi Backdate (> 3 Bulan)
       const txDate = new Date(txDateStr);
       const today = new Date();
-      
-      // Hitung selisih bulan
       const monthDiff = (today.getFullYear() - txDate.getFullYear()) * 12 + (today.getMonth() - txDate.getMonth());
 
-      let initialStatus = 'verified';
+      let txStatus = 'verified';
       if (monthDiff > 3) {
-        initialStatus = 'pending_review'; // Backdate > 3 bulan masuk antrean review
+        txStatus = 'pending_review';
       }
 
-      // 4. Simpan ke Database Supabase
-      const { data, error } = await supabase.from('transactions').insert([
+      // 5. Simpan Data ke Tabel 'transactions' (Database Baru)
+      const { error: dbError } = await supabase.from('transactions').insert([
         {
           source: groupTitle,
           transaction_date: txDateStr,
@@ -65,58 +70,68 @@ export default async function handler(req, res) {
           unit: 'Paket',
           percentage: 100,
           amount: txAmount,
-          signed_amount: -txAmount, // Kas Keluar bernilai negatif
+          signed_amount: -txAmount, // Nilai minus untuk Kas Keluar
           image_url: imageUrl,
           input_method: 'telegram',
-          status: initialStatus
+          status: txStatus
         }
       ]);
 
-      if (error) throw error;
+      if (dbError) {
+        console.error('Database Error:', dbError);
+        throw dbError;
+      }
 
-      // 5. Kirim Balasan Konfirmasi ke Telegram
+      // 6. Kirim Pesan Konfirmasi Balasan ke Telegram (Format Lama yang Stabil)
       let replyMessage = `✅ *Nota Berhasil Dicatat!*\n\n` +
         `📍 *Sumber:* ${groupTitle}\n` +
         `📅 *Tanggal:* ${txDateStr}\n` +
         `💰 *Nominal:* Rp ${txAmount.toLocaleString('id-ID')}\n` +
-        `📝 *Uraian:* ${txDescription}\n`;
+        `📝 *Uraian:* ${txDescription}`;
 
-      if (initialStatus === 'pending_review') {
-        replyMessage += `\n⚠️ *Catatan:* Transaksi ini terdeteksi _backdate_ (> 3 bulan) dan membutuhkan verifikasi Admin di Dashboard.`;
+      if (txStatus === 'pending_review') {
+        replyMessage += `\n\n⚠️ *Catatan:* Transaksi ini terdeteksi _backdate_ (> 3 bulan) dan masuk antrean verifikasi Admin di Dashboard.`;
       }
 
       await sendTelegramMessage(chatId, replyMessage);
-
-    } catch (err) {
-      console.error('Error Webhook:', err);
-      await sendTelegramMessage(chatId, '❌ Gagal memproses nota. Pastikan foto nota terlihat jelas.');
+    }
+  } catch (err) {
+    console.error('Error Webhook Execution:', err);
+    // Kirim notifikasi error ke pengguna Telegram agar mengetahui jika ada kendala
+    if (update && update.message && update.message.chat) {
+      await sendTelegramMessage(update.message.chat.id, '❌ Terjadi kesalahan saat memproses nota. Silakan coba kirim ulang foto nota.');
     }
   }
 
   return res.status(200).json({ status: 'ok' });
 }
 
-// Helper untuk mengirim pesan Telegram
+// Helper Pengiriman Pesan Telegram (Stabil)
 async function sendTelegramMessage(chatId, text) {
-  await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      chat_id: chatId,
-      text: text,
-      parse_mode: 'Markdown'
-    })
-  });
+  try {
+    await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text: text,
+        parse_mode: 'Markdown'
+      })
+    });
+  } catch (err) {
+    console.error('Gagal mengirim pesan Telegram:', err);
+  }
 }
 
-// Mock fungsi OCR (Ganti dengan integrasi OCR Anda)
+// Fungsi OCR (Pertahankan implementasi OCR lama/eksisting Anda di sini)
 async function processOCR(imageUrl) {
-  // Contoh return mock OCR
+  // Jika Anda sudah memiliki API OCR eksternal (seperti Mindee/Google Vision/Tesseract),
+  // masukkan fungsi pemanggil OCR lama Anda di sini.
   return {
     date: new Date().toISOString().split('T')[0],
-    merchantName: 'Toko/Kasir Telegram',
-    items: 'Belanja Operasional',
-    totalAmount: 50000,
-    time: '14:30'
+    merchantName: 'Toko Telegram',
+    items: 'Nota Belanja',
+    totalAmount: 0,
+    time: '12:00:00'
   };
 }
